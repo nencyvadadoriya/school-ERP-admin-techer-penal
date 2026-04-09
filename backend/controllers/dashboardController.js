@@ -48,24 +48,53 @@ const getTeacherDashboard = async (req, res) => {
     const teacher_code = req.user.teacher_code;
     const today = new Date(); today.setHours(0,0,0,0);
     const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
+    const next2Days = new Date(today); next2Days.setDate(next2Days.getDate() + 2);
 
-    const [myClasses, upcomingExams, homeworkGiven, myLeaves] = await Promise.all([
-      Class.find({ teacher_code, is_delete: false }),
-      Exam.find({ teacher_code, exam_date: { $gte: today }, is_delete: false }).limit(5),
+    // Get classes assigned to this teacher using teacher_code
+    const myClasses = await Class.find({ teacher_code, is_delete: false });
+    const classCodes = myClasses.map(c => c.class_code);
+
+    const [upcomingExams, upcomingExamsNext2Days, homeworkGiven, myLeaves] = await Promise.all([
+      Exam.find({ 
+        class_code: { $in: classCodes },
+        exam_date: { $gte: today },
+        is_delete: false 
+      }).limit(5).sort({ exam_date: 1 }),
+      Exam.find({
+        class_code: { $in: classCodes },
+        exam_date: { $gte: today, $lte: next2Days },
+        is_delete: false
+      }).limit(10).sort({ exam_date: 1 }),
       Homework.countDocuments({ teacher_code, is_delete: false }),
       TeacherLeave.find({ teacher_code, is_delete: false }).sort({ createdAt: -1 }).limit(5),
     ]);
 
-    const classCodes = myClasses.map(c => c.class_code);
-    const totalStudentsInClasses = await Student.countDocuments({ class_code: { $in: classCodes }, is_delete: false });
+    // Count students in classes assigned to this teacher
+    const totalStudentsInClasses = await Student.countDocuments({ 
+      class_code: { $in: classCodes }, 
+      is_delete: false,
+      is_active: true
+    });
 
     // Check if today's attendance was marked
-    const todayAtt = await Attendance.find({ class_code: { $in: classCodes }, date: { $gte: today, $lt: tomorrow }, is_delete: false });
+    const todayAtt = await Attendance.find({ 
+      class_code: { $in: classCodes }, 
+      date: { $gte: today, $lt: tomorrow }, 
+      is_delete: false 
+    });
     const attendancePending = classCodes.filter(cc => !todayAtt.find(a => a.class_code === cc)).length;
 
     res.json({
       success: true,
-      data: { myClasses, totalStudentsInClasses, attendancePending, homeworkGiven, upcomingExams, myLeaves }
+      data: { 
+        myClasses, 
+        totalStudentsInClasses, 
+        attendancePending, 
+        homeworkGiven, 
+        upcomingExams,
+        upcomingExamsNext2Days,
+        myLeaves 
+      }
     });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 };

@@ -49,9 +49,18 @@ const Fees: React.FC = () => {
     catch(e) { toast.error('Error'); }
   };
 
+  const getFullName = (student: any) => {
+    const firstName = student?.first_name || '';
+    const middleName = student?.middle_name ? ` ${student.middle_name}` : '';
+    const lastName = student?.last_name ? ` ${student.last_name}` : '';
+    return `${firstName}${middleName}${lastName}`.trim();
+  };
+
   const filtered = fees.filter(f =>
     f.gr_number?.includes(search) ||
-    f.student_id?.first_name?.toLowerCase().includes(search.toLowerCase())
+    f.student_id?.first_name?.toLowerCase().includes(search.toLowerCase()) ||
+    f.student_id?.middle_name?.toLowerCase().includes(search.toLowerCase()) ||
+    f.student_id?.last_name?.toLowerCase().includes(search.toLowerCase())
   );
 
   if (loading) return <Spinner />;
@@ -71,22 +80,26 @@ const Fees: React.FC = () => {
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
         <div className="relative mb-4">
           <FaSearch className="absolute left-3 top-3 text-gray-400" />
-          <input className="input-field pl-9" placeholder="Search by GR number..." value={search} onChange={e=>setSearch(e.target.value)} />
+          <input className="input-field pl-9" placeholder="Search by GR number or student name..." value={search} onChange={e=>setSearch(e.target.value)} />
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead><tr className="border-b border-gray-100 text-left text-gray-500">
-              <th className="pb-3 font-medium">GR No.</th><th className="pb-3 font-medium">Student</th>
-              <th className="pb-3 font-medium">Fee Type</th><th className="pb-3 font-medium">Total</th>
-              <th className="pb-3 font-medium">Paid</th><th className="pb-3 font-medium">Due Date</th>
-              <th className="pb-3 font-medium">Status</th><th className="pb-3 font-medium">Actions</th>
+              <th className="pb-3 font-medium">GR No.</th>
+              <th className="pb-3 font-medium">Student Name</th>
+              <th className="pb-3 font-medium">Fee Type</th>
+              <th className="pb-3 font-medium">Total</th>
+              <th className="pb-3 font-medium">Paid</th>
+              <th className="pb-3 font-medium">Due Date</th>
+              <th className="pb-3 font-medium">Status</th>
+              <th className="pb-3 font-medium">Actions</th>
             </tr></thead>
             <tbody>{filtered.length===0
-              ? <tr><td colSpan="8" className="text-center py-8 text-gray-400">No records</td></tr>
+              ? <tr><td colSpan={8} className="text-center py-8 text-gray-400">No records</td></tr>
               : filtered.map(f=>(
               <tr key={f._id} className="border-b border-gray-50 hover:bg-gray-50">
                 <td className="py-3 font-medium text-primary-600">{f.gr_number}</td>
-                <td className="py-3">{f.student_id?.first_name} {f.student_id?.last_name}</td>
+                <td className="py-3">{getFullName(f.student_id)}</td>
                 <td className="py-3">{f.fee_type}</td>
                 <td className="py-3">₹{f.total_amount?.toLocaleString()}</td>
                 <td className="py-3">₹{f.amount_paid?.toLocaleString()}</td>
@@ -98,8 +111,9 @@ const Fees: React.FC = () => {
                     <button onClick={()=>handleDelete(f._id)} className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg"><FaTrash /></button>
                   </div>
                 </td>
-              </tr>))
-            }</tbody>
+              </tr>
+            ))}
+            </tbody>
           </table>
         </div>
       </div>
@@ -109,7 +123,11 @@ const Fees: React.FC = () => {
             {!editing && <div className="col-span-2"><label className="block text-sm font-medium text-gray-700 mb-1">Student *</label>
               <select className="input-field" required value={form.student_id} onChange={handleStudentChange}>
                 <option value="">Select student</option>
-                {students.map(s=><option key={s._id} value={s._id}>{s.first_name} {s.last_name} ({s.gr_number})</option>)}
+                {students.map(s=>(
+                  <option key={s._id} value={s._id}>
+                    {getFullName(s)} ({s.gr_number})
+                  </option>
+                ))}
               </select></div>}
             <div><label className="block text-sm font-medium text-gray-700 mb-1">Fee Type</label>
               <select className="input-field" value={form.fee_type} onChange={e=>setForm({...form,fee_type:e.target.value})}>

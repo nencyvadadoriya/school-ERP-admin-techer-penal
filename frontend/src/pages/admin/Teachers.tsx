@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { teacherAPI, classAPI } from '../../services/api';
+import { teacherAPI, classAPI, subjectAPI } from '../../services/api';
 import { toast } from 'react-toastify';
-import { FaPlus, FaEdit, FaTrash, FaSearch, FaEye } from 'react-icons/fa';
+import { FaPlus, FaEdit, FaTrash, FaSearch, FaEye, FaHistory } from 'react-icons/fa';
+import { useNavigate } from 'react-router-dom';
 
 const Teachers: React.FC = () => {
+  const navigate = useNavigate();
   const [teachers, setTeachers] = useState<any[]>([]);
   const [classes, setClasses] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
@@ -16,11 +18,22 @@ const Teachers: React.FC = () => {
     last_name: '',
     email: '',
     phone: '',
+    password: '',
     experience: '',
     subjects: [],
+    medium: '',
     assigned_class: '',
     about: '',
   });
+
+  const buildClassCode = (cls: any) => {
+    const standard = cls?.standard ?? '';
+    const division = cls?.division ?? '';
+    const medium = cls?.medium ?? '';
+    const stream = cls?.stream ?? '';
+    const shift = cls?.shift ?? '';
+    return `STD-${standard}-${division}-${medium}-${stream || 'NA'}-${shift || 'NA'}`;
+  };
 
   useEffect(() => {
     fetchTeachers();
@@ -63,13 +76,26 @@ const Teachers: React.FC = () => {
   // Class ke subjects fetch karne ka function
   const fetchSubjectsForClass = async (className) => {
     try {
-      // Find the selected class from classes list
-      const selectedClass = classes.find(c => (c.class_name || c.name) === className);
-      
-      if (selectedClass && selectedClass.subjects && selectedClass.subjects.length > 0) {
-        setAvailableSubjects(selectedClass.subjects);
+      const selectedClass = classes.find((c) => buildClassCode(c) === className);
+
+      if (!selectedClass) {
+        setAvailableSubjects([]);
+        return;
+      }
+
+      const params: any = {
+        std: String(selectedClass.standard),
+        medium: selectedClass.medium,
+      };
+      if (selectedClass.stream) params.stream = selectedClass.stream;
+
+      const res = await subjectAPI.getAll(params);
+      const list = res?.data?.data || [];
+      const names = list.map((s: any) => s.subject_name).filter(Boolean);
+
+      if (names.length > 0) {
+        setAvailableSubjects(names);
       } else {
-        // Agar class me subjects nahi hai to default subjects dikhao ya empty array
         setAvailableSubjects([]);
         toast.info('No subjects found for this class. Please add subjects to the class first.');
       }
@@ -92,12 +118,29 @@ const Teachers: React.FC = () => {
 
   const handleChange = (e: any) => {
     const { name, value } = e.target;
+    if (name === 'medium') {
+      setFormData((s) => ({
+        ...s,
+        medium: value,
+        assigned_class: '',
+        subjects: [],
+      }));
+      setAvailableSubjects([]);
+      return;
+    }
+
     setFormData((s) => ({ ...s, [name]: value }));
   };
 
   const handleClassChange = (e: any) => {
     const value = e.target.value;
-    setFormData((s) => ({ ...s, assigned_class: value, subjects: [] }));
+    const selectedClass = classes.find((c) => buildClassCode(c) === value);
+    setFormData((s) => ({
+      ...s,
+      assigned_class: value,
+      subjects: [],
+      medium: selectedClass?.medium || s.medium,
+    }));
   };
 
   const handleSubjectsChange = (e: any) => {
@@ -112,8 +155,10 @@ const Teachers: React.FC = () => {
       last_name: '',
       email: '',
       phone: '',
+      password: '',
       experience: '',
       subjects: [],
+      medium: '',
       assigned_class: '',
       about: '',
     });
@@ -123,24 +168,28 @@ const Teachers: React.FC = () => {
 
   const openEditForm = (t) => {
     setSelectedTeacher(t);
+    const assignedClassValue = Array.isArray(t.assigned_class)
+      ? (t.assigned_class[0] || '')
+      : (t.assigned_class || '');
+    const selectedClass = assignedClassValue
+      ? classes.find((c) => buildClassCode(c) === assignedClassValue)
+      : null;
     setFormData({
       first_name: t.first_name || '',
       last_name: t.last_name || '',
       email: t.email || '',
       phone: t.phone || '',
+      password: '',
       experience: t.experience || '',
       subjects: t.subjects || [],
-      assigned_class: t.assigned_class || '',
+      medium: t.medium || selectedClass?.medium || '',
+      assigned_class: assignedClassValue,
       about: t.about || '',
     });
     
     // Edit mode me bhi subjects fetch karo agar class assigned hai
-    if (t.assigned_class) {
-      // Find class and set available subjects
-      const selectedClass = classes.find(c => (c.class_name || c.name) === t.assigned_class);
-      if (selectedClass && selectedClass.subjects) {
-        setAvailableSubjects(selectedClass.subjects);
-      }
+    if (assignedClassValue) {
+      fetchSubjectsForClass(assignedClassValue);
     }
     setShowForm(true);
   };
@@ -173,8 +222,10 @@ const Teachers: React.FC = () => {
         last_name: '',
         email: '',
         phone: '',
+        password: '',
         experience: '',
         subjects: [],
+        medium: '',
         assigned_class: '',
         about: '',
       });
@@ -198,6 +249,10 @@ const Teachers: React.FC = () => {
     t.last_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (t.email || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  const classOptions = formData.medium
+    ? classes.filter((c) => c?.medium === formData.medium)
+    : classes;
 
   if (loading) {
     return (
@@ -281,7 +336,9 @@ const Teachers: React.FC = () => {
                       {t.experience}y
                     </td>
                     <td className="px-3 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {t.assigned_class || 'Not assigned'}
+                      {Array.isArray(t.assigned_class)
+                        ? (t.assigned_class.join(', ') || 'Not assigned')
+                        : (t.assigned_class || 'Not assigned')}
                     </td>
                     <td className="px-3 py-4 text-sm text-gray-500 max-w-[200px]">
                       <div className="flex flex-wrap gap-1">
@@ -305,11 +362,11 @@ const Teachers: React.FC = () => {
                     <td className="px-3 py-4 whitespace-nowrap text-sm font-medium">
                       <div className="flex items-center space-x-2">
                         <button 
-                          onClick={() => openEditForm(t)} 
+                          onClick={() => navigate(`/admin/teacher-history/${t._id || t.id}`)} 
                           className="text-primary-600 hover:text-primary-900"
-                          title="View Details"
+                          title="View History"
                         >
-                          <FaEye />
+                          <FaHistory />
                         </button>
                         <button 
                           onClick={() => openEditForm(t)} 
@@ -411,8 +468,26 @@ const Teachers: React.FC = () => {
                 />
               </div>
 
+              {/* Password */}
+              {!selectedTeacher && (
+                <div className="space-y-1">
+                  <label className="block text-sm font-medium text-gray-700">
+                    Password <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    name="password"
+                    value={formData.password}
+                    onChange={handleChange}
+                    placeholder="Set teacher login password"
+                    type="password"
+                    className="input-field"
+                    required
+                  />
+                </div>
+              )}
+
               {/* Experience */}
-              <div className="space-y-1 col-span-1 md:col-span-2">
+              <div className="space-y-1 ">
                 <label className="block text-sm font-medium text-gray-700">
                   Experience (years)
                 </label>
@@ -453,20 +528,42 @@ const Teachers: React.FC = () => {
                   required
                 >
                   <option value="">Select a class</option>
-                  {classes.length > 0 ? (
-                    classes.map((cls) => (
+                  {classOptions.length > 0 ? (
+                    classOptions.map((cls) => (
                       <option 
                         key={cls._id || cls.id} 
-                        value={cls.class_name || cls.name}
+                        value={buildClassCode(cls)}
                       >
-                        {cls.class_name || cls.name} {cls.section ? `- Section ${cls.section}` : ''}
+                        Std {cls.standard} - Div {cls.division} - {cls.medium}{cls.stream ? ` - ${cls.stream}` : ''}{cls.shift ? ` - ${cls.shift}` : ''}
                       </option>
                     ))
                   ) : (
-                    <option disabled>No classes available. Please add classes first.</option>
+                    <option disabled>
+                      {formData.medium ? 'No classes available for selected medium.' : 'No classes available. Please add classes first.'}
+                    </option>
                   )}
                 </select>
                 <p className="text-xs text-gray-500">Select the class assigned to this teacher</p>
+              </div>
+
+              {/* Medium - Dropdown */}
+              <div className="space-y-1 col-span-1 md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700">
+                  Medium <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={formData.medium}
+                  onChange={handleChange}
+                  name="medium"
+                  className="input-field cursor-pointer"
+                  required
+                >
+                  <option value="">Select medium</option>
+                  {Array.from(new Set((classes || []).map((c) => c?.medium).filter(Boolean))).map((m: any) => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500">Select the medium for this teacher assignment</p>
               </div>
 
               {/* Subjects - Multi Select Dropdown (Class ke hisab se subjects) */}

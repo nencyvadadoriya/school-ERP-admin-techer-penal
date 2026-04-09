@@ -2,6 +2,7 @@ const mongoose = require('mongoose');
 
 const examSchema = new mongoose.Schema({
   exam_name: { type: String, required: true },
+  medium: { type: String, enum: ['Gujarati', 'English'], required: true },
   class_code: { type: String, required: true },
   subject_code: { type: String, required: true },
   teacher_code: { type: String },

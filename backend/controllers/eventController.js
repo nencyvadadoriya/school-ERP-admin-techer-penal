@@ -1,8 +1,17 @@
 const Event = require('../models/Event');
+const Notification = require('../models/Notification');
 
 const createEvent = async (req, res) => {
   try {
     const event = await Event.create(req.body);
+    
+    // Create notification for all
+    await Notification.create({
+      title: 'New Event: ' + event.title,
+      message: event.description || 'A new event has been scheduled.',
+      recipient_type: 'All'
+    });
+
     res.status(201).json({ success: true, message: 'Event created', data: event });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 };

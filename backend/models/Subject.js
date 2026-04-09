@@ -9,6 +9,11 @@ const subjectSchema = new mongoose.Schema({
       return stdNum >= 10;
     },
     trim: true,
+    set: function(v) {
+      if (typeof v !== 'string') return v;
+      const t = v.trim();
+      return t === '' ? undefined : t;
+    },
   },
   subject_name: {
     type: String,
@@ -41,6 +46,11 @@ const subjectSchema = new mongoose.Schema({
       'Secondary',
       'Higher Secondary'
     ],
+    set: function(v) {
+      if (typeof v !== 'string') return v;
+      const t = v.trim();
+      return t === '' ? undefined : t;
+    },
   },
   is_delete: {
     type: Boolean,
@@ -48,6 +58,20 @@ const subjectSchema = new mongoose.Schema({
   },
 }, {
   timestamps: true,
+});
+
+subjectSchema.pre('validate', function(next) {
+  if (!this.stream) {
+    const map = {
+      Primary: 'Primary',
+      Secondary: 'Secondary',
+      'Higher Secondary': 'Higher Secondary',
+    };
+    if (this.subject_level && map[this.subject_level]) {
+      this.stream = map[this.subject_level];
+    }
+  }
+  next();
 });
 
 // Compound partial index to ensure unique subject_code per medium when subject_code exists

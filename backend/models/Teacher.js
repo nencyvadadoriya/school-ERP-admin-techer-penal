@@ -46,6 +46,10 @@ const teacherSchema = new mongoose.Schema({
   about: {
     type: String,
   },
+  medium: {
+    type: String,
+    trim: true,
+  },
   assigned_class: {
     type: [String],
     default: [],

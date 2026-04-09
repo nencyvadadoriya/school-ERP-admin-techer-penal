@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const {
   registerStudent,
+  bulkCreateStudents,
   loginStudent,
   getAllStudents,
   getStudentById,
@@ -16,6 +17,7 @@ router.post('/login', loginStudent);
 
 // Admin only routes
 router.post('/register', auth, adminAuth, upload.single('profile_image'), registerStudent);
+router.post('/bulk', auth, adminAuth, bulkCreateStudents);
 router.delete('/:id', auth, adminAuth, deleteStudent);
 
 // Protected routes

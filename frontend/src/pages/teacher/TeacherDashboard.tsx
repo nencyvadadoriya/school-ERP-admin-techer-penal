@@ -50,9 +50,9 @@ const TeacherDashboard: React.FC = () => {
         </div>
         <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-2">
           <h2 className="text-xs font-semibold text-gray-900 mb-2">Upcoming Exams</h2>
-          {!data?.upcomingExams?.length ? <p className="text-gray-400 text-xs">No upcoming exams</p>
+          {!data?.upcomingExamsNext2Days?.length ? <p className="text-gray-400 text-xs">No exams in next 2 days</p>
           : <div className="space-y-2">
-            {data.upcomingExams.map(ex=>(
+            {data.upcomingExamsNext2Days.map(ex=>(
               <div key={ex._id} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
                 <div>
                   <p className="font-medium text-gray-900">{ex.exam_name}</p>

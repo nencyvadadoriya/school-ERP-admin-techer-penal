@@ -4,20 +4,23 @@ import { toast } from 'react-toastify';
 import api from '../../services/api';
 import Modal from '../../components/Modal';
 import Spinner from '../../components/Spinner';
+import BulkAddSubject from '../../components/BulkAddSubject';
 
-const EMPTY = { subject_code: '', subject_name: '', subject_level: 'Secondary', std: '', stream: '', medium: 'English' };
+const EMPTY = { subject_code: '', subject_name: '', subject_level: 'Secondary', std: '', stream: '', medium: 'English', is_delete: false };
 
-const Subjects: React.FC = () => {
-  const [subjects, setSubjects] = useState<any[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [modal, setModal] = useState<boolean>(false);
-  const [editing, setEditing] = useState<any | null>(null);
+const Subjects = () => {
+  const [subjects, setSubjects] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [modal, setModal] = useState(false);
+  const [bulkModal, setBulkModal] = useState(false);
+  const [editing, setEditing] = useState(null);
   const [form, setForm] = useState(EMPTY);
-  const [search, setSearch] = useState<string>('');
-  const [viewMode, setViewMode] = useState<string>('grid'); // 'grid', 'list', 'stdwise'
-  const [selectedStd, setSelectedStd] = useState<string>('');
-  const [showFilters, setShowFilters] = useState<boolean>(false);
-  const [expandedStd, setExpandedStd] = useState<any | null>(null);
+  const [search, setSearch] = useState('');
+  const [viewMode, setViewMode] = useState('grid'); // 'grid', 'list', 'stdwise'
+  const [selectedStd, setSelectedStd] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
+  const [expandedStd, setExpandedStd] = useState(null);
+  const [expandedMedium, setExpandedMedium] = useState(null); // New state for medium expansion
   const [filters, setFilters] = useState({
     medium: '',
     stream: '',
@@ -25,28 +28,39 @@ const Subjects: React.FC = () => {
   });
 
   const fetch = async () => {
-    try { 
-      const r = await api.get('/admin/subjects'); 
-      setSubjects(r.data.data || []); 
-    } catch(e) { 
-      setSubjects([]); 
-    } finally { 
-      setLoading(false); 
+    try {
+      const r = await api.get('/subject');
+      setSubjects(r.data.data || []);
+    } catch (e) {
+      setSubjects([]);
+    } finally {
+      setLoading(false);
     }
   };
-  
+
   useEffect(() => { fetch(); }, []);
 
-  const openAdd: React.FC = () => { 
-    setEditing(null); 
-    setForm({ ...EMPTY, medium: 'English' }); 
-    setModal(true); 
+  const openAdd = () => {
+    setEditing(null);
+    setForm({ ...EMPTY, medium: 'English' });
+    setModal(true);
   };
-  
-  const openEdit = (s) => { 
-    setEditing(s); 
-    setForm({...s}); 
-    setModal(true); 
+
+  const openBulkAdd = () => {
+    setBulkModal(true);
+  };
+
+  const openAddForStd = (stdValue, mediumValue) => {
+    setEditing(null);
+    const level = getSubjectLevel(stdValue);
+    setForm({ ...EMPTY, std: String(stdValue), subject_level: level, medium: mediumValue, stream: '' });
+    setModal(true);
+  };
+
+  const openEdit = (s) => {
+    setEditing(s);
+    setForm({ ...s });
+    setModal(true);
   };
 
   const getStreamOptions = (std) => {
@@ -79,20 +93,20 @@ const Subjects: React.FC = () => {
     return 'Secondary';
   };
 
-  const handleFormChange = (e: any) => {
+  const handleFormChange = (e) => {
     const { name, value } = e.target;
     setForm({ ...form, [name]: value });
-    
+
     if (name === 'std') {
       const level = getSubjectLevel(value);
       setForm(prev => ({ ...prev, std: value, subject_level: level, stream: '' }));
     }
   };
 
-  const handleSubmit = async (e: any) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     const standardNum = Number(form.std);
-    
+
     if (standardNum >= 10 && !form.subject_code) {
       toast.error('Subject code required for class 10-12');
       return;
@@ -105,30 +119,30 @@ const Subjects: React.FC = () => {
       toast.error('Please fill all required fields');
       return;
     }
-    
+
     try {
       if (editing) {
-        await api.patch(`/admin/subjects/${editing._id}`, form);
+        await api.patch(`/subject/${editing._id}`, form);
         toast.success('Subject updated');
       } else {
-        await api.post('/admin/subjects', form);
+        await api.post('/subject', form);
         toast.success('Subject created');
       }
       await fetch();
       setModal(false);
-    } catch(err) { 
-      toast.error(err.response?.data?.message || 'Error saving subject'); 
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Error saving subject');
     }
   };
 
   const handleDelete = async (id) => {
     if (!window.confirm('Delete this subject?')) return;
     try {
-      await api.delete(`/admin/subjects/${id}`);
+      await api.delete(`/subject/${id}`);
       toast.success('Subject deleted');
       await fetch();
-    } catch(e) { 
-      toast.error('Error deleting subject'); 
+    } catch (e) {
+      toast.error('Error deleting subject');
     }
   };
 
@@ -143,18 +157,25 @@ const Subjects: React.FC = () => {
     return matchesSearch && matchesStd && matchesMedium && matchesStream && matchesLevel;
   });
 
-  // Group subjects by standard for stdwise view
-  const groupByStandard = () => {
-    const grouped: Record<string, any[]> = {};
+  // Group subjects by standard AND medium for stdwise view
+  const groupByStandardAndMedium = () => {
+    const grouped = {};
+    
     filtered.forEach(subject => {
       const std = subject.std || 'Unassigned';
+      const medium = subject.medium || 'Unknown';
+      
       if (!grouped[std]) {
-        grouped[std] = [];
+        grouped[std] = {};
       }
-      grouped[std].push(subject);
+      if (!grouped[std][medium]) {
+        grouped[std][medium] = [];
+      }
+      grouped[std][medium].push(subject);
     });
 
-    const sortedGrouped: Record<string, any[]> = {};
+    // Sort standards
+    const sortedGrouped = {};
     Object.keys(grouped).sort((a, b) => {
       if (a === 'Unassigned') return 1;
       if (b === 'Unassigned') return -1;
@@ -166,7 +187,7 @@ const Subjects: React.FC = () => {
     return sortedGrouped;
   };
 
-  const standards = [...new Set(subjects.map(s => s.std).filter(Boolean))].sort((a,b) => a-b);
+  const standards = [...new Set(subjects.map(s => s.std).filter(Boolean))].sort((a, b) => Number(a) - Number(b));
   const mediums = [...new Set(subjects.map(s => s.medium).filter(Boolean))];
   const streams = [...new Set(subjects.map(s => s.stream).filter(Boolean))];
   const levels = [...new Set(subjects.map(s => s.subject_level).filter(Boolean))];
@@ -191,7 +212,7 @@ const Subjects: React.FC = () => {
     return medium === 'English' ? 'bg-indigo-100 text-indigo-700' : 'bg-orange-100 text-orange-700';
   };
 
-  const groupedData = groupByStandard();
+  const groupedData = groupByStandardAndMedium();
 
   if (loading) return <Spinner />;
 
@@ -203,10 +224,16 @@ const Subjects: React.FC = () => {
           <h1 className="text-lg font-bold text-gray-900">Subjects</h1>
           <p className="text-xs text-gray-500">Manage school subjects</p>
         </div>
-        <button onClick={openAdd} className="bg-primary-600 hover:bg-primary-700 text-white px-3 py-1.5 rounded-lg text-sm flex items-center gap-1 transition">
-          <FaPlus className="text-xs" />
-          <span>Add</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={openBulkAdd} className="bg-white hover:bg-gray-50 text-gray-700 border border-gray-300 px-3 py-1.5 rounded-lg text-sm flex items-center gap-1 transition">
+            <FaPlus className="text-xs" />
+            <span>Bulk Add</span>
+          </button>
+          <button onClick={openAdd} className="bg-primary-600 hover:bg-primary-700 text-white px-3 py-1.5 rounded-lg text-sm flex items-center gap-1 transition">
+            <FaPlus className="text-xs" />
+            <span>Add</span>
+          </button>
+        </div>
       </div>
 
       {/* Stats Cards */}
@@ -250,21 +277,20 @@ const Subjects: React.FC = () => {
               type="text"
               placeholder="Search..."
               value={search}
-              onChange={(e: any) => setSearch(e.target.value)}
+              onChange={(e) => setSearch(e.target.value)}
               className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-1 focus:ring-primary-500"
             />
           </div>
-          
+
           <button
             onClick={() => setShowFilters(!showFilters)}
-            className={`px-2.5 py-1.5 rounded-lg border flex items-center gap-1 text-sm ${
-              showFilters ? 'bg-primary-50 border-primary-300 text-primary-700' : 'bg-white border-gray-300 text-gray-600'
-            }`}
+            className={`px-2.5 py-1.5 rounded-lg border flex items-center gap-1 text-sm ${showFilters ? 'bg-primary-50 border-primary-300 text-primary-700' : 'bg-white border-gray-300 text-gray-600'
+              }`}
           >
             <FaFilter className="text-xs" />
             <span>Filter</span>
           </button>
-          
+
           <div className="flex border border-gray-300 rounded-lg overflow-hidden">
             <button
               onClick={() => setViewMode('list')}
@@ -296,41 +322,41 @@ const Subjects: React.FC = () => {
             <div className="grid grid-cols-4 gap-2">
               <select
                 value={selectedStd}
-                onChange={(e: any) => setSelectedStd(e.target.value)}
+                onChange={(e) => setSelectedStd(e.target.value)}
                 className="text-xs border border-gray-300 rounded-lg px-2 py-1.5"
               >
                 <option value="">All Std</option>
                 {standards.map(std => <option key={std} value={std}>Class {std}</option>)}
               </select>
-              
+
               <select
                 value={filters.medium}
-                onChange={(e: any) => setFilters({...filters, medium: e.target.value})}
+                onChange={(e) => setFilters({ ...filters, medium: e.target.value })}
                 className="text-xs border border-gray-300 rounded-lg px-2 py-1.5"
               >
                 <option value="">All Medium</option>
                 {mediums.map(medium => <option key={medium} value={medium}>{medium}</option>)}
               </select>
-              
+
               <select
                 value={filters.stream}
-                onChange={(e: any) => setFilters({...filters, stream: e.target.value})}
+                onChange={(e) => setFilters({ ...filters, stream: e.target.value })}
                 className="text-xs border border-gray-300 rounded-lg px-2 py-1.5"
               >
                 <option value="">All Stream</option>
                 {streams.map(stream => <option key={stream} value={stream}>{stream}</option>)}
               </select>
-              
+
               <select
                 value={filters.level}
-                onChange={(e: any) => setFilters({...filters, level: e.target.value})}
+                onChange={(e) => setFilters({ ...filters, level: e.target.value })}
                 className="text-xs border border-gray-300 rounded-lg px-2 py-1.5"
               >
                 <option value="">All Level</option>
                 {levels.map(level => <option key={level} value={level}>{level === 'Higher Secondary' ? 'Higher Sec' : level}</option>)}
               </select>
             </div>
-            
+
             {(selectedStd || filters.medium || filters.stream || filters.level || search) && (
               <div className="flex justify-end mt-2">
                 <button onClick={resetFilters} className="text-xs text-red-600 flex items-center gap-1">
@@ -342,124 +368,244 @@ const Subjects: React.FC = () => {
         )}
       </div>
 
-      {/* Grid View */}
+      {/* Grid View - With Medium Separation */}
       {viewMode === 'grid' && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
+        <div className="space-y-4">
           {filtered.length === 0 ? (
-            <div className="col-span-full text-center py-8 text-gray-400 text-sm">No subjects found</div>
+            <div className="text-center py-8 text-gray-400 text-sm">No subjects found</div>
           ) : (
-            filtered.map((s) => (
-              <div key={s._id} className="bg-white rounded-lg border border-gray-200 p-2 hover:shadow-md transition-shadow">
-                <div className="flex items-start justify-between mb-1">
-                  <div className="flex-1 min-w-0">
-                    {s.subject_code && (
-                      <p className="text-[10px] font-mono text-gray-500 truncate">{s.subject_code}</p>
-                    )}
-                    <h3 className="text-sm font-semibold text-gray-900 truncate">{s.subject_name}</h3>
+            <>
+              {/* English Section */}
+              {filtered.some(s => s.medium === 'English') && (
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="w-1 h-5 bg-indigo-500 rounded"></div>
+                    <h3 className="text-sm font-semibold text-gray-900">English Medium</h3>
+                    <span className="text-xs text-gray-500">({filtered.filter(s => s.medium === 'English').length})</span>
                   </div>
-                  <div className="flex gap-0.5 ml-1 flex-shrink-0">
-                    <button onClick={() => openEdit(s)} className="p-1 text-blue-600 hover:bg-blue-50 rounded">
-                      <FaEdit className="text-[10px]" />
-                    </button>
-                    <button onClick={() => handleDelete(s._id)} className="p-1 text-red-600 hover:bg-red-50 rounded">
-                      <FaTrash className="text-[10px]" />
-                    </button>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
+                    {filtered.filter(s => s.medium === 'English').map((s) => (
+                      <div key={s._id} className="bg-white rounded-lg border border-gray-200 p-2 hover:shadow-md transition-shadow">
+                        <div className="flex items-start justify-between mb-1">
+                          <div className="flex-1 min-w-0">
+                            {s.subject_code && (
+                              <p className="text-[10px] font-mono text-gray-500 truncate">{s.subject_code}</p>
+                            )}
+                            <h3 className="text-sm font-semibold text-gray-900 truncate">{s.subject_name}</h3>
+                          </div>
+                          <div className="flex gap-0.5 ml-1 flex-shrink-0">
+                            <button onClick={() => openEdit(s)} className="p-1 text-blue-600 hover:bg-blue-50 rounded">
+                              <FaEdit className="text-[10px]" />
+                            </button>
+                            <button onClick={() => handleDelete(s._id)} className="p-1 text-red-600 hover:bg-red-50 rounded">
+                              <FaTrash className="text-[10px]" />
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="space-y-1 text-[10px]">
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-500">Class:</span>
+                            <span className="font-medium text-gray-700">{s.std ? s.std : '—'}</span>
+                          </div>
+                          {s.stream && (
+                            <div className="flex justify-between items-center">
+                              <span className="text-gray-500">Stream:</span>
+                              <span className="text-gray-600 truncate max-w-[80px]">{s.stream}</span>
+                            </div>
+                          )}
+                          <div className="pt-0.5">
+                            <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-semibold ${getLevelColor(s.subject_level)}`}>
+                              {s.subject_level === 'Higher Secondary' ? 'Higher Sec' : s.subject_level}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
-                
-                <div className="space-y-1 text-[10px]">
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-500">Class:</span>
-                    <span className="font-medium text-gray-700">{s.std ? s.std : '—'}</span>
+              )}
+
+              {/* Gujarati Section */}
+              {filtered.some(s => s.medium === 'Gujarati') && (
+                <div>
+                  <div className="flex items-center gap-2 mb-2 mt-4">
+                    <div className="w-1 h-5 bg-orange-500 rounded"></div>
+                    <h3 className="text-sm font-semibold text-gray-900">Gujarati Medium</h3>
+                    <span className="text-xs text-gray-500">({filtered.filter(s => s.medium === 'Gujarati').length})</span>
                   </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-gray-500">Medium:</span>
-                    <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-medium ${getMediumColor(s.medium)}`}>
-                      {s.medium === 'English' ? 'Eng' : 'Guj'}
-                    </span>
-                  </div>
-                  {s.stream && (
-                    <div className="flex justify-between items-center">
-                      <span className="text-gray-500">Stream:</span>
-                      <span className="text-gray-600 truncate max-w-[80px]">{s.stream}</span>
-                    </div>
-                  )}
-                  <div className="pt-0.5">
-                    <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-semibold ${getLevelColor(s.subject_level)}`}>
-                      {s.subject_level === 'Higher Secondary' ? 'Higher Sec' : s.subject_level}
-                    </span>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
+                    {filtered.filter(s => s.medium === 'Gujarati').map((s) => (
+                      <div key={s._id} className="bg-white rounded-lg border border-gray-200 p-2 hover:shadow-md transition-shadow">
+                        <div className="flex items-start justify-between mb-1">
+                          <div className="flex-1 min-w-0">
+                            {s.subject_code && (
+                              <p className="text-[10px] font-mono text-gray-500 truncate">{s.subject_code}</p>
+                            )}
+                            <h3 className="text-sm font-semibold text-gray-900 truncate">{s.subject_name}</h3>
+                          </div>
+                          <div className="flex gap-0.5 ml-1 flex-shrink-0">
+                            <button onClick={() => openEdit(s)} className="p-1 text-blue-600 hover:bg-blue-50 rounded">
+                              <FaEdit className="text-[10px]" />
+                            </button>
+                            <button onClick={() => handleDelete(s._id)} className="p-1 text-red-600 hover:bg-red-50 rounded">
+                              <FaTrash className="text-[10px]" />
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="space-y-1 text-[10px]">
+                          <div className="flex justify-between items-center">
+                            <span className="text-gray-500">Class:</span>
+                            <span className="font-medium text-gray-700">{s.std ? s.std : '—'}</span>
+                          </div>
+                          {s.stream && (
+                            <div className="flex justify-between items-center">
+                              <span className="text-gray-500">Stream:</span>
+                              <span className="text-gray-600 truncate max-w-[80px]">{s.stream}</span>
+                            </div>
+                          )}
+                          <div className="pt-0.5">
+                            <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-semibold ${getLevelColor(s.subject_level)}`}>
+                              {s.subject_level === 'Higher Secondary' ? 'Higher Sec' : s.subject_level}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
-              </div>
-            ))
+              )}
+            </>
           )}
         </div>
       )}
 
-      {/* List View */}
+      {/* List View - With Medium Separation */}
       {viewMode === 'list' && (
-        <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs">
-              <thead className="bg-gray-50">
-                <tr className="text-left text-gray-500">
-                  <th className="px-2 py-1.5 font-medium">Code</th>
-                  <th className="px-2 py-1.5 font-medium">Name</th>
-                  <th className="px-2 py-1.5 font-medium">Level</th>
-                  <th className="px-2 py-1.5 font-medium">Std</th>
-                  <th className="px-2 py-1.5 font-medium">Medium</th>
-                  <th className="px-2 py-1.5 font-medium">Stream</th>
-                  <th className="px-2 py-1.5 font-medium">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {filtered.map((s) => (
-                  <tr key={s._id} className="hover:bg-gray-50">
-                    <td className="px-2 py-1.5 font-mono text-primary-600">{s.subject_code || '—'}</td>
-                    <td className="px-2 py-1.5 font-medium text-gray-900">{s.subject_name}</td>
-                    <td className="px-2 py-1.5">
-                      <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-semibold ${getLevelColor(s.subject_level)}`}>
-                        {s.subject_level === 'Higher Secondary' ? 'Higher Sec' : s.subject_level}
-                      </span>
-                    </td>
-                    <td className="px-2 py-1.5 text-gray-600">{s.std || '—'}</td>
-                    <td className="px-2 py-1.5">
-                      <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-semibold ${getMediumColor(s.medium)}`}>
-                        {s.medium === 'English' ? 'Eng' : 'Guj'}
-                      </span>
-                    </td>
-                    <td className="px-2 py-1.5 text-gray-600 max-w-[100px] truncate">{s.stream || '—'}</td>
-                    <td className="px-2 py-1.5">
-                      <div className="flex gap-1">
-                        <button onClick={() => openEdit(s)} className="p-1 text-blue-600 hover:bg-blue-50 rounded">
-                          <FaEdit className="text-[10px]" />
-                        </button>
-                        <button onClick={() => handleDelete(s._id)} className="p-1 text-red-600 hover:bg-red-50 rounded">
-                          <FaTrash className="text-[10px]" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+        <div className="space-y-4">
+          {filtered.length === 0 ? (
+            <div className="text-center py-8 text-gray-400 text-sm">No subjects found</div>
+          ) : (
+            <>
+              {/* English Section */}
+              {filtered.some(s => s.medium === 'English') && (
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="w-1 h-5 bg-indigo-500 rounded"></div>
+                    <h3 className="text-sm font-semibold text-gray-900">English Medium</h3>
+                    <span className="text-xs text-gray-500">({filtered.filter(s => s.medium === 'English').length})</span>
+                  </div>
+                  <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs">
+                        <thead className="bg-gray-50">
+                          <tr className="text-left text-gray-500">
+                            <th className="px-2 py-1.5 font-medium">Code</th>
+                            <th className="px-2 py-1.5 font-medium">Name</th>
+                            <th className="px-2 py-1.5 font-medium">Level</th>
+                            <th className="px-2 py-1.5 font-medium">Std</th>
+                            <th className="px-2 py-1.5 font-medium">Stream</th>
+                            <th className="px-2 py-1.5 font-medium">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {filtered.filter(s => s.medium === 'English').map((s) => (
+                            <tr key={s._id} className="hover:bg-gray-50">
+                              <td className="px-2 py-1.5 font-mono text-primary-600">{s.subject_code || '—'}</td>
+                              <td className="px-2 py-1.5 font-medium text-gray-900">{s.subject_name}</td>
+                              <td className="px-2 py-1.5">
+                                <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-semibold ${getLevelColor(s.subject_level)}`}>
+                                  {s.subject_level === 'Higher Secondary' ? 'Higher Sec' : s.subject_level}
+                                </span>
+                              </td>
+                              <td className="px-2 py-1.5 text-gray-600">{s.std || '—'}</td>
+                              <td className="px-2 py-1.5 text-gray-600 max-w-[100px] truncate">{s.stream || '—'}</td>
+                              <td className="px-2 py-1.5">
+                                <div className="flex gap-1">
+                                  <button onClick={() => openEdit(s)} className="p-1 text-blue-600 hover:bg-blue-50 rounded">
+                                    <FaEdit className="text-[10px]" />
+                                  </button>
+                                  <button onClick={() => handleDelete(s._id)} className="p-1 text-red-600 hover:bg-red-50 rounded">
+                                    <FaTrash className="text-[10px]" />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                       </table>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Gujarati Section */}
+              {filtered.some(s => s.medium === 'Gujarati') && (
+                <div>
+                  <div className="flex items-center gap-2 mb-2 mt-4">
+                    <div className="w-1 h-5 bg-orange-500 rounded"></div>
+                    <h3 className="text-sm font-semibold text-gray-900">Gujarati Medium</h3>
+                    <span className="text-xs text-gray-500">({filtered.filter(s => s.medium === 'Gujarati').length})</span>
+                  </div>
+                  <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs">
+                        <thead className="bg-gray-50">
+                          <tr className="text-left text-gray-500">
+                            <th className="px-2 py-1.5 font-medium">Code</th>
+                            <th className="px-2 py-1.5 font-medium">Name</th>
+                            <th className="px-2 py-1.5 font-medium">Level</th>
+                            <th className="px-2 py-1.5 font-medium">Std</th>
+                            <th className="px-2 py-1.5 font-medium">Stream</th>
+                            <th className="px-2 py-1.5 font-medium">Actions</th>
+                           </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-100">
+                          {filtered.filter(s => s.medium === 'Gujarati').map((s) => (
+                            <tr key={s._id} className="hover:bg-gray-50">
+                              <td className="px-2 py-1.5 font-mono text-primary-600">{s.subject_code || '—'}</td>
+                              <td className="px-2 py-1.5 font-medium text-gray-900">{s.subject_name}</td>
+                              <td className="px-2 py-1.5">
+                                <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-semibold ${getLevelColor(s.subject_level)}`}>
+                                  {s.subject_level === 'Higher Secondary' ? 'Higher Sec' : s.subject_level}
+                                </span>
+                              </td>
+                              <td className="px-2 py-1.5 text-gray-600">{s.std || '—'}</td>
+                              <td className="px-2 py-1.5 text-gray-600 max-w-[100px] truncate">{s.stream || '—'}</td>
+                              <td className="px-2 py-1.5">
+                                <div className="flex gap-1">
+                                  <button onClick={() => openEdit(s)} className="p-1 text-blue-600 hover:bg-blue-50 rounded">
+                                    <FaEdit className="text-[10px]" />
+                                  </button>
+                                  <button onClick={() => handleDelete(s._id)} className="p-1 text-red-600 hover:bg-red-50 rounded">
+                                    <FaTrash className="text-[10px]" />
+                                  </button>
+                                </div>
+                              </td>
+                             </tr>
+                          ))}
+                        </tbody>
+                       </table>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
         </div>
       )}
 
-      {/* Standard-wise Card View - NEW */}
+      {/* Standard-wise Card View - WITH MEDIUM SEPARATION */}
       {viewMode === 'stdwise' && (
         <div className="space-y-3">
           {Object.keys(groupedData).length === 0 ? (
             <div className="text-center py-8 text-gray-400 text-sm">No subjects found</div>
           ) : (
-            Object.entries(groupedData).map(([standard, subjectList]) => (
+            Object.entries(groupedData).map(([standard, mediumGroups]) => (
               <div key={standard} className="bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm">
                 {/* Standard Header */}
-                <div 
-                  className="bg-gradient-to-r from-gray-50 to-gray-100 px-3 py-2 border-b cursor-pointer hover:bg-gray-100 transition-colors"
-                  onClick={() => setExpandedStd(expandedStd === standard ? null : standard)}
-                >
+                <div className="bg-gradient-to-r from-gray-50 to-gray-100 px-3 py-2 border-b">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <div className="w-7 h-7 bg-primary-100 rounded-full flex items-center justify-center">
@@ -472,64 +618,118 @@ const Subjects: React.FC = () => {
                           {standard === 'Unassigned' ? 'Unassigned Subjects' : `Class ${standard}`}
                         </h3>
                         <p className="text-[10px] text-gray-500">
-                          {subjectList.length} {subjectList.length === 1 ? 'subject' : 'subjects'}
+                          {Object.values(mediumGroups).flat().length} subjects
                         </p>
                       </div>
                     </div>
-                    <svg 
-                      className={`w-4 h-4 text-gray-400 transition-transform ${expandedStd === standard ? 'rotate-180' : ''}`}
-                      fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                    <button 
+                      onClick={() => setExpandedStd(expandedStd === standard ? null : standard)} 
+                      className={`p-1 rounded transition-transform ${expandedStd === standard ? 'rotate-180' : ''}`}
+                      title="Toggle"
                     >
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                    </svg>
+                      <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                      </svg>
+                    </button>
                   </div>
                 </div>
-                
+
                 {/* Subjects Grid - Shows when expanded */}
                 {expandedStd === standard && (
-                  <div className="p-3">
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
-                      {subjectList.map((subject) => (
-                        <div key={subject._id} className="border border-gray-100 rounded-lg p-2 hover:shadow-md transition-shadow bg-white">
-                          {subject.subject_code && (
-                            <div className="mb-1">
-                              <span className="text-[9px] font-mono text-primary-600 bg-primary-50 px-1 py-0.5 rounded">
-                                {subject.subject_code}
-                              </span>
-                            </div>
-                          )}
-                          <h4 className="text-xs font-semibold text-gray-900 mb-1.5 truncate">{subject.subject_name}</h4>
-                          <div className="space-y-1 text-[9px]">
-                            <div className="flex items-center justify-between">
-                              <span className="text-gray-500">Level:</span>
-                              <span className={`px-1 py-0.5 rounded-full text-[8px] font-medium ${getLevelColor(subject.subject_level)}`}>
-                                {subject.subject_level === 'Higher Secondary' ? 'Higher Sec' : subject.subject_level}
-                              </span>
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <span className="text-gray-500">Medium:</span>
-                              <span className={`px-1 py-0.5 rounded-full text-[8px] font-medium ${getMediumColor(subject.medium)}`}>
-                                {subject.medium === 'English' ? 'Eng' : 'Guj'}
-                              </span>
-                            </div>
-                            {subject.stream && (
-                              <div className="flex items-center justify-between">
-                                <span className="text-gray-500">Stream:</span>
-                                <span className="text-gray-600 text-[8px] truncate max-w-[70px]">{subject.stream}</span>
-                              </div>
-                            )}
-                          </div>
-                          <div className="flex gap-1 mt-2 pt-1 border-t border-gray-50 justify-end">
-                            <button onClick={() => openEdit(subject)} className="p-0.5 text-blue-600 hover:bg-blue-50 rounded">
-                              <FaEdit className="text-[8px]" />
-                            </button>
-                            <button onClick={() => handleDelete(subject._id)} className="p-0.5 text-red-600 hover:bg-red-50 rounded">
-                              <FaTrash className="text-[8px]" />
-                            </button>
-                          </div>
+                  <div className="p-3 space-y-4">
+                    {/* English Medium Section */}
+                    {mediumGroups['English'] && mediumGroups['English'].length > 0 && (
+                      <div>
+                        <div className="flex items-center gap-2 mb-2">
+                          <div className="w-1 h-4 bg-indigo-500 rounded"></div>
+                          <h4 className="text-xs font-semibold text-gray-700">English Medium</h4>
+                          <span className="text-[10px] text-gray-400">({mediumGroups['English'].length})</span>
                         </div>
-                      ))}
-                    </div>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
+                          {mediumGroups['English'].map((subject) => (
+                            <div key={subject._id} className="border border-gray-100 rounded-lg p-2 hover:shadow-md transition-shadow bg-white">
+                              {subject.subject_code && (
+                                <div className="mb-1">
+                                  <span className="text-[9px] font-mono text-primary-600 bg-primary-50 px-1 py-0.5 rounded">
+                                    {subject.subject_code}
+                                  </span>
+                                </div>
+                              )}
+                              <h4 className="text-xs font-semibold text-gray-900 mb-1.5 truncate">{subject.subject_name}</h4>
+                              <div className="space-y-1 text-[9px]">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-gray-500">Level:</span>
+                                  <span className={`px-1 py-0.5 rounded-full text-[8px] font-medium ${getLevelColor(subject.subject_level)}`}>
+                                    {subject.subject_level === 'Higher Secondary' ? 'Higher Sec' : subject.subject_level}
+                                  </span>
+                                </div>
+                                {subject.stream && (
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-gray-500">Stream:</span>
+                                    <span className="text-gray-600 text-[8px] truncate max-w-[70px]">{subject.stream}</span>
+                                  </div>
+                                )}
+                              </div>
+                              <div className="flex gap-1 mt-2 pt-1 border-t border-gray-50 justify-end">
+                                <button onClick={() => openEdit(subject)} className="p-0.5 text-blue-600 hover:bg-blue-50 rounded">
+                                  <FaEdit className="text-[8px]" />
+                                </button>
+                                <button onClick={() => handleDelete(subject._id)} className="p-0.5 text-red-600 hover:bg-red-50 rounded">
+                                  <FaTrash className="text-[8px]" />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Gujarati Medium Section */}
+                    {mediumGroups['Gujarati'] && mediumGroups['Gujarati'].length > 0 && (
+                      <div>
+                        <div className="flex items-center gap-2 mb-2 mt-3">
+                          <div className="w-1 h-4 bg-orange-500 rounded"></div>
+                          <h4 className="text-xs font-semibold text-gray-700">Gujarati Medium</h4>
+                          <span className="text-[10px] text-gray-400">({mediumGroups['Gujarati'].length})</span>
+                        </div>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
+                          {mediumGroups['Gujarati'].map((subject) => (
+                            <div key={subject._id} className="border border-gray-100 rounded-lg p-2 hover:shadow-md transition-shadow bg-white">
+                              {subject.subject_code && (
+                                <div className="mb-1">
+                                  <span className="text-[9px] font-mono text-primary-600 bg-primary-50 px-1 py-0.5 rounded">
+                                    {subject.subject_code}
+                                  </span>
+                                </div>
+                              )}
+                              <h4 className="text-xs font-semibold text-gray-900 mb-1.5 truncate">{subject.subject_name}</h4>
+                              <div className="space-y-1 text-[9px]">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-gray-500">Level:</span>
+                                  <span className={`px-1 py-0.5 rounded-full text-[8px] font-medium ${getLevelColor(subject.subject_level)}`}>
+                                    {subject.subject_level === 'Higher Secondary' ? 'Higher Sec' : subject.subject_level}
+                                  </span>
+                                </div>
+                                {subject.stream && (
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-gray-500">Stream:</span>
+                                    <span className="text-gray-600 text-[8px] truncate max-w-[70px]">{subject.stream}</span>
+                                  </div>
+                                )}
+                              </div>
+                              <div className="flex gap-1 mt-2 pt-1 border-t border-gray-50 justify-end">
+                                <button onClick={() => openEdit(subject)} className="p-0.5 text-blue-600 hover:bg-blue-50 rounded">
+                                  <FaEdit className="text-[8px]" />
+                                </button>
+                                <button onClick={() => handleDelete(subject._id)} className="p-0.5 text-red-600 hover:bg-red-50 rounded">
+                                  <FaTrash className="text-[8px]" />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -552,14 +752,14 @@ const Subjects: React.FC = () => {
       )}
 
       {/* Modal */}
-      <Modal isOpen={modal} onClose={()=>setModal(false)} title={editing ? 'Edit Subject' : 'Add Subject'}>
+      <Modal isOpen={modal} onClose={() => setModal(false)} title={editing ? 'Edit Subject' : 'Add Subject'}>
         <form onSubmit={handleSubmit} className="space-y-3">
           <div className="grid grid-cols-2 gap-2">
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-0.5">Class *</label>
               <select className="w-full px-2 py-1.5 text-sm border rounded-lg" name="std" required value={form.std} onChange={handleFormChange}>
                 <option value="">Select</option>
-                {[1,2,3,4,5,6,7,8,9,10,11,12].map(s => <option key={s} value={s}>Class {s}</option>)}
+                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(s => <option key={s} value={s}>Class {s}</option>)}
               </select>
             </div>
             <div>
@@ -593,10 +793,16 @@ const Subjects: React.FC = () => {
           </div>
           <div className="flex gap-2 pt-2">
             <button type="submit" className="flex-1 bg-primary-600 text-white px-3 py-1.5 rounded-lg text-sm hover:bg-primary-700">{editing ? 'Update' : 'Create'}</button>
-            <button type="button" onClick={()=>setModal(false)} className="flex-1 bg-gray-200 text-gray-700 px-3 py-1.5 rounded-lg text-sm hover:bg-gray-300">Cancel</button>
+            <button type="button" onClick={() => setModal(false)} className="flex-1 bg-gray-200 text-gray-700 px-3 py-1.5 rounded-lg text-sm hover:bg-gray-300">Cancel</button>
           </div>
         </form>
       </Modal>
+
+      <BulkAddSubject
+        isOpen={bulkModal}
+        onClose={() => setBulkModal(false)}
+        onCreated={fetch}
+      />
     </div>
   );
 };

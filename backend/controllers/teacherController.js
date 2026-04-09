@@ -38,6 +38,7 @@ const registerTeacher = async (req, res) => {
       pin,
       experience,
       about,
+      medium,
       assigned_class,
       subjects,
     } = req.body;
@@ -86,6 +87,7 @@ const registerTeacher = async (req, res) => {
       profile_image: profileImageUrl,
       experience: experience ? Number(experience) : 0,
       about,
+      medium,
       assigned_class: assignedClassArray,
       subjects: subjectsArray,
     });
@@ -266,6 +268,7 @@ const updateTeacher = async (req, res) => {
       pin,
       experience,
       about,
+      medium,
       assigned_class,
       subjects,
       is_active,
@@ -302,6 +305,9 @@ const updateTeacher = async (req, res) => {
       teacher.experience = Number(experience);
     }
     teacher.about = about;
+    if (typeof medium !== 'undefined') {
+      teacher.medium = medium;
+    }
     teacher.assigned_class = assignedClassArray;
     teacher.subjects = subjectsArray;
     teacher.is_active = is_active;

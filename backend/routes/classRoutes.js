@@ -16,6 +16,7 @@ router.delete('/:id', classController.deleteClass);
 
 // Assign teacher to class
 router.patch('/:id/assign-teacher', classController.assignTeacher);
+router.patch('/:id/class-teacher', classController.updateClassTeacher);
 router.patch('/:id/subjects', classController.addSubjects);  // Add multiple subjects
 router.post('/:id/subjects', classController.addSingleSubject);  // Add single subject
 router.delete('/:id/subjects', classController.removeSubject);  // Remove subject

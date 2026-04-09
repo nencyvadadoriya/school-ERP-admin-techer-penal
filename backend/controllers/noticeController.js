@@ -1,8 +1,21 @@
 const Notice = require('../models/Notice');
+const Notification = require('../models/Notification');
 
 const createNotice = async (req, res) => {
   try {
     const notice = await Notice.create(req.body);
+
+    // Create notification based on target audience
+    let recipient_type = 'All';
+    if (notice.target_audience === 'Students') recipient_type = 'Student';
+    else if (notice.target_audience === 'Teachers') recipient_type = 'Teacher';
+
+    await Notification.create({
+      title: 'New Notice: ' + notice.title,
+      message: notice.content,
+      recipient_type: recipient_type
+    });
+
     res.status(201).json({ success: true, message: 'Notice created', data: notice });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 };

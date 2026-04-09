@@ -18,8 +18,8 @@ const MarkAttendance: React.FC = () => {
     if (!classCode) return;
     setLoading(true);
     try {
-      const r = await studentAPI.getAll();
-      const cls = (r.data.data || []).filter(s => s.class_code === classCode);
+      const r = await studentAPI.getAll({ class_code: classCode });
+      const cls = r.data.data || [];
       setStudents(cls);
       const init = {};
       cls.forEach(s => { init[s.gr_number] = 'Present'; });

@@ -1,9 +1,32 @@
 const Exam = require('../models/Exam');
 const ExamResult = require('../models/ExamResult');
+const Notification = require('../models/Notification');
 
 const createExam = async (req, res) => {
   try {
     const exam = await Exam.create(req.body);
+    
+    // Add Notification for Teachers and Students
+    try {
+      // 1. Notify all Teachers
+      await Notification.create({
+        title: 'New Exam Added',
+        message: `A new exam "${exam.exam_name}" has been scheduled for class ${exam.class_code} on ${new Date(exam.exam_date).toLocaleDateString()}.`,
+        recipient_type: 'Teacher'
+      });
+
+      // 2. Notify Students of the specific class
+      await Notification.create({
+        title: 'New Exam Scheduled',
+        message: `Your exam "${exam.exam_name}" for subject ${exam.subject_code} is scheduled for ${new Date(exam.exam_date).toLocaleDateString()}.`,
+        recipient_type: 'Class',
+        recipient_id: exam.class_code
+      });
+    } catch (notificationError) {
+      console.error('Failed to create notifications:', notificationError);
+      // We don't want to fail the exam creation if notification fails
+    }
+
     res.status(201).json({ success: true, message: 'Exam created', data: exam });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 };

@@ -47,6 +47,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggleSidebar }) => {
     { path: '/admin/dashboard', icon: FaTachometerAlt, label: 'Dashboard', section: 'main' },
     { path: '/admin/students', icon: FaUserGraduate, label: 'Students', section: 'management' },
     { path: '/admin/teachers', icon: FaChalkboardTeacher, label: 'Teachers', section: 'management' },
+    { path: '/admin/assign-class-teacher', icon: FaChalkboardTeacher, label: 'Assign Class Teacher', section: 'management' },
     { path: '/admin/classes', icon: FaSchool, label: 'Classes', section: 'management' },
     { path: '/admin/subjects', icon: FaBook, label: 'Subjects', section: 'management' },
     { path: '/admin/attendance', icon: FaCalendarCheck, label: 'Attendance', section: 'academic' },
@@ -54,7 +55,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggleSidebar }) => {
     { path: '/admin/fees', icon: FaMoneyBillWave, label: 'Fees', section: 'finance' },
     { path: '/admin/notices', icon: FaBell, label: 'Notices', section: 'communication' },
     { path: '/admin/events', icon: FaCalendarAlt, label: 'Events', section: 'communication' },
-    { path: '/admin/leave', icon: FaFileAlt, label: 'Leave Management', section: 'communication' },
+    { path: '/admin/leaves', icon: FaFileAlt, label: 'Leave Management', section: 'communication' },
     { path: '/admin/timetable', icon: FaClock, label: 'Timetable', section: 'academic' },
   ];
 
@@ -66,6 +67,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggleSidebar }) => {
     { path: '/teacher/results', icon: FaFileAlt, label: 'Results', section: 'academic' },
     { path: '/teacher/timetable', icon: FaClock, label: 'Timetable', section: 'academic' },
     { path: '/teacher/notices', icon: FaBell, label: 'Notices', section: 'communication' },
+    { path: '/teacher/events', icon: FaCalendarAlt, label: 'Events', section: 'communication' },
     { path: '/teacher/leave', icon: FaFileAlt, label: 'Leave Application', section: 'communication' },
   ];
 

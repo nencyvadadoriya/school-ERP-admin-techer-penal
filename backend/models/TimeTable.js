@@ -23,4 +23,6 @@ const timeTableSchema = new mongoose.Schema({
   is_active: { type: Boolean, default: true },
 }, { timestamps: true });
 
+timeTableSchema.index({ class_code: 1, 'schedule.day': 1, 'schedule.periods.period_number': 1 });
+
 module.exports = mongoose.model('TimeTable', timeTableSchema);

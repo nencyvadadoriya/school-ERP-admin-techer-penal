@@ -329,7 +329,7 @@ const AdminDashboard: React.FC = () => {
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis type="number" />
                   <YAxis dataKey="teacher" type="category" width={70} tick={{ fontSize: 10 }} />
-                  <Tooltip />
+                  <Tooltip /> 
                   <Bar dataKey="students" fill="#8b5cf6" name="Students" radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>

@@ -16,7 +16,9 @@ import Header from './components/Header';
 // Admin Pages
 import AdminDashboard from './pages/admin/AdminDashboard';
 import Students from './pages/admin/Students';
+import StudentHistory from './pages/admin/StudentHistory';
 import Teachers from './pages/admin/Teachers';
+import TeacherHistory from './pages/admin/TeacherHistory';
 import Classes from './pages/admin/Classes';
 import Subjects from './pages/admin/Subjects';
 import Attendance from './pages/admin/Attendance';
@@ -24,6 +26,7 @@ import Exams from './pages/admin/Exams';
 import Fees from './pages/admin/Fees';
 import Notices from './pages/admin/Notices';
 import Events from './pages/admin/Events';
+import AssignClassTeacher from './pages/admin/AssignClassTeacher';
 import Timetable from './pages/admin/Timetable';
 import LeaveManagement from './pages/admin/LeaveManagement';
 
@@ -33,6 +36,10 @@ import MarkAttendance from './pages/teacher/MarkAttendance';
 import TeacherHomework from './pages/teacher/TeacherHomework';
 import EnterResults from './pages/teacher/EnterResults';
 import TeacherLeave from './pages/teacher/TeacherLeave';
+import TeacherTimetable from './pages/teacher/TeacherTimetable';
+import TeacherExams from './pages/teacher/TeacherExams';
+import TeacherEvents from './pages/teacher/TeacherEvents';
+import TeacherNotices from './pages/teacher/TeacherNotices';
 
 // Common
 import Profile from './pages/Profile';
@@ -80,7 +87,9 @@ function AppContent() {
       {/* Admin Routes */}
       <Route path="/admin/dashboard" element={<PrivateRoute role="admin"><DashboardLayout><AdminDashboard /></DashboardLayout></PrivateRoute>} />
       <Route path="/admin/students" element={<PrivateRoute role="admin"><DashboardLayout><Students /></DashboardLayout></PrivateRoute>} />
+      <Route path="/admin/student-history/:id" element={<PrivateRoute role="admin"><DashboardLayout><StudentHistory /></DashboardLayout></PrivateRoute>} />
       <Route path="/admin/teachers" element={<PrivateRoute role="admin"><DashboardLayout><Teachers /></DashboardLayout></PrivateRoute>} />
+      <Route path="/admin/teacher-history/:id" element={<PrivateRoute role="admin"><DashboardLayout><TeacherHistory /></DashboardLayout></PrivateRoute>} />
       <Route path="/admin/classes" element={<PrivateRoute role="admin"><DashboardLayout><Classes /></DashboardLayout></PrivateRoute>} />
       <Route path="/admin/subjects" element={<PrivateRoute role="admin"><DashboardLayout><Subjects /></DashboardLayout></PrivateRoute>} />
       <Route path="/admin/attendance" element={<PrivateRoute role="admin"><DashboardLayout><Attendance /></DashboardLayout></PrivateRoute>} />
@@ -88,6 +97,7 @@ function AppContent() {
       <Route path="/admin/fees" element={<PrivateRoute role="admin"><DashboardLayout><Fees /></DashboardLayout></PrivateRoute>} />
       <Route path="/admin/notices" element={<PrivateRoute role="admin"><DashboardLayout><Notices /></DashboardLayout></PrivateRoute>} />
       <Route path="/admin/events" element={<PrivateRoute role="admin"><DashboardLayout><Events /></DashboardLayout></PrivateRoute>} />
+      <Route path="/admin/assign-class-teacher" element={<PrivateRoute role="admin"><DashboardLayout><AssignClassTeacher /></DashboardLayout></PrivateRoute>} />
       <Route path="/admin/timetable" element={<PrivateRoute role="admin"><DashboardLayout><Timetable /></DashboardLayout></PrivateRoute>} />
       <Route path="/admin/leaves" element={<PrivateRoute role="admin"><DashboardLayout><LeaveManagement /></DashboardLayout></PrivateRoute>} />
       <Route path="/admin/profile" element={<PrivateRoute role="admin"><DashboardLayout><Profile /></DashboardLayout></PrivateRoute>} />
@@ -95,8 +105,12 @@ function AppContent() {
       {/* Teacher Routes */}
       <Route path="/teacher/dashboard" element={<PrivateRoute role="teacher"><DashboardLayout><TeacherDashboard /></DashboardLayout></PrivateRoute>} />
       <Route path="/teacher/attendance" element={<PrivateRoute role="teacher"><DashboardLayout><MarkAttendance /></DashboardLayout></PrivateRoute>} />
+      <Route path="/teacher/exams" element={<PrivateRoute role="teacher"><DashboardLayout><TeacherExams /></DashboardLayout></PrivateRoute>} />
       <Route path="/teacher/homework" element={<PrivateRoute role="teacher"><DashboardLayout><TeacherHomework /></DashboardLayout></PrivateRoute>} />
       <Route path="/teacher/results" element={<PrivateRoute role="teacher"><DashboardLayout><EnterResults /></DashboardLayout></PrivateRoute>} />
+      <Route path="/teacher/timetable" element={<PrivateRoute role="teacher"><DashboardLayout><TeacherTimetable /></DashboardLayout></PrivateRoute>} />
+      <Route path="/teacher/events" element={<PrivateRoute role="teacher"><DashboardLayout><TeacherEvents /></DashboardLayout></PrivateRoute>} />
+      <Route path="/teacher/notices" element={<PrivateRoute role="teacher"><DashboardLayout><TeacherNotices /></DashboardLayout></PrivateRoute>} />
       <Route path="/teacher/leave" element={<PrivateRoute role="teacher"><DashboardLayout><TeacherLeave /></DashboardLayout></PrivateRoute>} />
       <Route path="/teacher/profile" element={<PrivateRoute role="teacher"><DashboardLayout><Profile /></DashboardLayout></PrivateRoute>} />
 

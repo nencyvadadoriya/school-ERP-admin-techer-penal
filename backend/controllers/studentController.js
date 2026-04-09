@@ -1,6 +1,7 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const Student = require('../models/Student');
+const Class = require('../models/Class');
 const { uploadToCloudinary } = require('../config/cloudinary');
 
 // Generate GR Number
@@ -117,6 +118,139 @@ const registerStudent = async (req, res) => {
   }
 };
 
+const bulkCreateStudents = async (req, res) => {
+  try {
+    const { classId, medium, std, class_code, shift, stream, default_password, students } = req.body;
+
+    let resolvedStd = std;
+    let resolvedClassCode = class_code;
+    let resolvedShift = shift;
+    let resolvedStream = stream;
+
+    if (classId) {
+      const classDoc = await Class.findOne({ _id: classId, is_delete: false });
+      if (!classDoc) {
+        return res.status(400).json({ success: false, message: 'Invalid classId' });
+      }
+
+      if (medium && String(medium) !== String(classDoc.medium)) {
+        return res.status(400).json({ success: false, message: 'Invalid medium for selected class' });
+      }
+
+      resolvedStd = String(classDoc.standard);
+      resolvedClassCode = `${classDoc.standard}${classDoc.division}-${classDoc.medium}`;
+      resolvedShift = resolvedShift || classDoc.shift;
+      resolvedStream = resolvedStream || classDoc.stream;
+    }
+
+    if (!resolvedStd) {
+      return res.status(400).json({ success: false, message: 'std is required' });
+    }
+    if (!resolvedClassCode) {
+      return res.status(400).json({ success: false, message: 'class_code is required' });
+    }
+    if (!Array.isArray(students) || students.length === 0) {
+      return res.status(400).json({ success: false, message: 'students array is required' });
+    }
+
+    const year = new Date().getFullYear();
+    const baseCount = await Student.countDocuments();
+
+    const errors = [];
+    const docs = [];
+    const generatedCredentials = [];
+    const inputIndexByDocIndex = [];
+
+    for (let i = 0; i < students.length; i++) {
+      const row = students[i] || {};
+      const first_name = typeof row.first_name === 'string' ? row.first_name.trim() : row.first_name;
+      const middle_name = typeof row.middle_name === 'string' ? row.middle_name.trim() : row.middle_name;
+      const last_name = typeof row.last_name === 'string' ? row.last_name.trim() : row.last_name;
+      const roll_no = typeof row.roll_no === 'string' ? row.roll_no.trim() : row.roll_no;
+
+      if (!first_name) {
+        errors.push({ index: i, message: 'first_name is required' });
+        continue;
+      }
+      if (!last_name) {
+        errors.push({ index: i, message: 'last_name is required' });
+        continue;
+      }
+
+      const gr_number = `GR${year}${String(baseCount + docs.length + 1).padStart(5, '0')}`;
+
+      let plainPassword = row.password || default_password;
+      if (!plainPassword) {
+        plainPassword = Math.random().toString(36).slice(-8);
+        generatedCredentials.push({ index: i, gr_number, password: plainPassword });
+      }
+
+      const hashedPassword = await bcrypt.hash(String(plainPassword), 10);
+
+      inputIndexByDocIndex.push(i);
+      docs.push({
+        gr_number,
+        std: String(resolvedStd),
+        roll_no,
+        first_name,
+        middle_name,
+        last_name,
+        gender: row.gender,
+        phone1: row.phone1,
+        phone2: row.phone2,
+        address: row.address,
+        pin: row.pin,
+        class_code: String(resolvedClassCode),
+        password: hashedPassword,
+        profile_image: null,
+        fees: typeof row.fees !== 'undefined' ? Number(row.fees) : 0,
+        shift: row.shift || resolvedShift,
+        stream: row.stream || resolvedStream,
+      });
+    }
+
+    if (docs.length === 0) {
+      return res.status(400).json({ success: false, message: 'No valid students to create', errors });
+    }
+
+    let created = [];
+    try {
+      created = await Student.insertMany(docs, { ordered: false });
+    } catch (error) {
+      if (error?.writeErrors && Array.isArray(error.writeErrors)) {
+        error.writeErrors.forEach((we) => {
+          const inputIndex = typeof we.index === 'number' ? (inputIndexByDocIndex[we.index] ?? we.index) : we.index;
+          errors.push({
+            index: inputIndex,
+            message: we?.errmsg || we?.error?.message || 'Duplicate value / validation failed',
+          });
+        });
+        created = error.insertedDocs || [];
+      } else {
+        throw error;
+      }
+    }
+
+    const createdSanitized = created.map((s) => {
+      const obj = s.toObject ? s.toObject() : s;
+      if (obj && obj.password) delete obj.password;
+      return obj;
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: 'Bulk students created',
+      count: createdSanitized.length,
+      data: createdSanitized,
+      errors,
+      generated_credentials: generatedCredentials,
+    });
+  } catch (error) {
+    console.error('Error in bulkCreateStudents:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 // Login Student
 const loginStudent = async (req, res) => {
   try {
@@ -180,7 +314,11 @@ const loginStudent = async (req, res) => {
 // Get All Students
 const getAllStudents = async (req, res) => {
   try {
-    const students = await Student.find({ is_delete: false })
+    const { class_code } = req.query;
+    const filter = { is_delete: false };
+    if (class_code) filter.class_code = String(class_code);
+
+    const students = await Student.find(filter)
       .select('-password')
       .sort({ createdAt: -1 });
 
@@ -340,6 +478,7 @@ const deleteStudent = async (req, res) => {
 
 module.exports = {
   registerStudent,
+  bulkCreateStudents,
   loginStudent,
   getAllStudents,
   getStudentById,

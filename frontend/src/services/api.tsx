@@ -44,8 +44,9 @@ export const teacherAPI = {
 
 export const studentAPI = {
   register: (data) => api.post('/student/register', data),
+  bulkCreate: (data) => api.post('/student/bulk', data),
   login: (data) => api.post('/student/login', data),
-  getAll: () => api.get('/student'),
+  getAll: (params?: any) => api.get('/student', { params }),
   getById: (id) => api.get(`/student/${id}`),
   update: (id, data) => api.patch(`/student/${id}`, data),
   updateImage: (id, formData) => api.patch(`/student/${id}`, formData),
@@ -61,6 +62,17 @@ export const classAPI = {
   update: (id, data) => api.patch(`/class/${id}`, data),
   delete: (id) => api.delete(`/class/${id}`),
   assignTeacher: (id, data) => api.patch(`/class/${id}/assign-teacher`, data),
+  updateClassTeacher: (id, data) => api.patch(`/class/${id}/class-teacher`, data),
+};
+
+export const subjectAPI = {
+  create: (data) => api.post('/subject', data),
+  bulkCreate: (data) => api.post('/subject/bulk', data),
+  getAll: (params?: any) => api.get('/subject', { params }),
+  getById: (id) => api.get(`/subject/${id}`),
+  update: (id, data) => api.patch(`/subject/${id}`, data),
+  delete: (id) => api.delete(`/subject/${id}`),
+  getByClass: (params?: any) => api.get('/subject/by-class', { params }),
 };
 
 export const attendanceAPI = {
@@ -122,6 +134,7 @@ export const leaveAPI = {
 
 export const timetableAPI = {
   save: (data) => api.post('/timetable', data),
+  deleteEntry: (data) => api.delete('/timetable/entry', { data }),
   getAll: () => api.get('/timetable'),
   getByClass: (class_code) => api.get(`/timetable/${class_code}`),
 };

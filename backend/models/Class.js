@@ -44,6 +44,15 @@ const classSchema = new mongoose.Schema({
     type: Boolean,
     default: true,
   },
+  teacher_code: {
+    type: String,
+    trim: true,
+  },
+  class_code: {
+    type: String,
+    unique: true,
+    trim: true,
+  },
 }, {
   timestamps: true,
 });

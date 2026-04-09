@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const {
   createSubject,
+  bulkCreateSubjects,
   getAllSubjects,
   getSubjectById,
   updateSubject,
@@ -19,6 +20,9 @@ router.use(verifyToken);
 router.route('/')
   .get(getAllSubjects)
   .post(isAdmin, createSubject);
+
+// POST /api/subject/bulk      - Bulk create subjects for a class (admin only)
+router.post('/bulk', isAdmin, bulkCreateSubjects);
 
 // GET /api/subject/by-class   - Get subjects grouped by std
 router.get('/by-class', getSubjectsByClass);

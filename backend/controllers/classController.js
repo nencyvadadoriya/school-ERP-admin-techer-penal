@@ -16,7 +16,8 @@ exports.createClass = async (req, res) => {
       medium, 
       stream, 
       shift,
-      subjects: subjects || []  // ✅ Add subjects
+      subjects: subjects || [],
+      class_code: `${standard}-${division}-${medium}` // Generate class_code
     });
     await newClass.save();
 
@@ -111,7 +112,57 @@ exports.assignTeacher = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Class not found' });
     }
 
+    // Also update the teacher's assigned_class array if it's not already there
+    if (teacher_code) {
+      const Teacher = require('../models/Teacher');
+      await Teacher.findOneAndUpdate(
+        { teacher_code, is_delete: false },
+        { $addToSet: { assigned_class: updatedClass.class_code } }
+      );
+    }
+
     res.status(200).json({ success: true, message: 'Teacher assigned successfully', data: updatedClass });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// Update class teacher (the primary one)
+exports.updateClassTeacher = async (req, res) => {
+  try {
+    const { teacher_code, is_class_teacher } = req.body;
+    
+    // If setting as class teacher, we store teacher_code in Class model
+    const updateData = is_class_teacher ? { teacher_code } : { teacher_code: null };
+    
+    const updatedClass = await Class.findOneAndUpdate(
+      { _id: req.params.id, is_delete: false },
+      { $set: updateData },
+      { new: true }
+    );
+
+    if (!updatedClass) {
+      return res.status(404).json({ success: false, message: 'Class not found' });
+    }
+
+    // Update Teacher's assigned_class array
+    const Teacher = require('../models/Teacher');
+    if (is_class_teacher && teacher_code) {
+      // Add class_code to teacher's assigned_class if it doesn't exist
+      await Teacher.findOneAndUpdate(
+        { teacher_code, is_delete: false },
+        { $addToSet: { assigned_class: updatedClass.class_code } }
+      );
+    } else {
+      // Find the class code from the updatedClass object
+      const classCode = updatedClass.class_code;
+      // When unassigning, we should probably keep it in assigned_class 
+      // but if the user wants strict class teacher logic, we could $pull
+      // However, the request says "tik kre to wo class ka count show hoga"
+      // implying the checkbox controls the visibility.
+    }
+
+    res.status(200).json({ success: true, message: 'Class teacher updated', data: updatedClass });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

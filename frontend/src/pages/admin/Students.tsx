@@ -1,15 +1,22 @@
 import React, { useState, useEffect } from 'react';
 import { studentAPI, classAPI } from '../../services/api';
 import { toast } from 'react-toastify';
-import { FaPlus, FaEdit, FaTrash, FaSearch, FaEye } from 'react-icons/fa';
+import { FaPlus, FaEdit, FaTrash, FaSearch, FaEye, FaHistory } from 'react-icons/fa';
+import { useNavigate } from 'react-router-dom';
 
 const Students: React.FC = () => {
+  const navigate = useNavigate();
   const [students, setStudents] = useState<any[]>([]);
   const [classes, setClasses] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [showModal, setShowModal] = useState<boolean>(false);
+  const [showBulkModal, setShowBulkModal] = useState<boolean>(false);
   const [selectedStudent, setSelectedStudent] = useState<any | null>(null);
+  const [bulkClassId, setBulkClassId] = useState<string>('');
+  const [bulkText, setBulkText] = useState<string>('');
+  const [bulkSubmitting, setBulkSubmitting] = useState<boolean>(false);
+  const [bulkResults, setBulkResults] = useState<any | null>(null);
   const [formData, setFormData] = useState({
     std: '',
     roll_no: '',
@@ -160,6 +167,84 @@ const Students: React.FC = () => {
     setShowModal(true);
   };
 
+  const openBulkModal = () => {
+    setBulkResults(null);
+    setBulkSubmitting(false);
+    setBulkClassId('');
+    setBulkText('');
+    setShowBulkModal(true);
+  };
+
+  const normalizeHeader = (h: string) => String(h || '').trim().toLowerCase().replace(/\s+/g, '_');
+
+  const parseBulkRows = (text: string) => {
+    const lines = String(text || '')
+      .split(/\r?\n/)
+      .map((l) => l.trim())
+      .filter(Boolean);
+    if (lines.length === 0) return [];
+
+    const splitLine = (line: string) => {
+      const delimiter = line.includes('\t') ? '\t' : ',';
+      return line.split(delimiter).map((c) => c.trim());
+    };
+
+    const headers = splitLine(lines[0]).map(normalizeHeader);
+    const rows = [];
+    for (let i = 1; i < lines.length; i++) {
+      const cols = splitLine(lines[i]);
+      const row: any = {};
+      for (let j = 0; j < headers.length; j++) {
+        row[headers[j]] = cols[j] ?? '';
+      }
+      if (row.first_name || row.last_name || row.roll_no) rows.push(row);
+    }
+    return rows;
+  };
+
+  const handleBulkSubmit = async () => {
+    try {
+      if (!bulkClassId) {
+        toast.error('Please select a class');
+        return;
+      }
+      const parsed = parseBulkRows(bulkText);
+      if (!parsed.length) {
+        toast.error('No rows found. Paste CSV/TSV with header row.');
+        return;
+      }
+
+      const payloadStudents = parsed.map((r: any) => ({
+        roll_no: r.roll_no || r.roll || r.rollnumber || r.roll_number,
+        first_name: r.first_name || r.firstname,
+        middle_name: r.middle_name || r.middlename,
+        last_name: r.last_name || r.lastname,
+        gender: r.gender,
+        phone1: r.phone1 || r.phone || r.mobile,
+        phone2: r.phone2,
+        address: r.address,
+        pin: r.pin || r.pincode,
+        fees: r.fees,
+        shift: r.shift,
+        stream: r.stream,
+        password: r.password,
+      }));
+
+      setBulkSubmitting(true);
+      setBulkResults(null);
+      const res = await studentAPI.bulkCreate({ classId: bulkClassId, students: payloadStudents });
+      setBulkResults(res?.data);
+      toast.success(`Created ${res?.data?.count || 0} students`);
+      fetchStudents();
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || 'Bulk create failed';
+      toast.error(msg);
+      setBulkResults(err?.response?.data || null);
+    } finally {
+      setBulkSubmitting(false);
+    }
+  };
+
   const openEditModal = (student) => {
     setSelectedStudent(student);
     setFormData({
@@ -274,10 +359,16 @@ const Students: React.FC = () => {
           <h1 className="text-2xl font-bold text-gray-900">Students Management</h1>
           <p className="text-gray-600 mt-1">Manage all students in your school</p>
         </div>
-        <button onClick={openAddModal} className="btn-primary flex items-center space-x-2 px-3 py-2 text-sm">
-          <FaPlus className="text-sm" />
-          <span>Add Student</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={openBulkModal} className="btn-secondary flex items-center space-x-2 px-3 py-2 text-sm">
+            <FaPlus className="text-sm" />
+            <span>Bulk Add</span>
+          </button>
+          <button onClick={openAddModal} className="btn-primary flex items-center space-x-2 px-3 py-2 text-sm">
+            <FaPlus className="text-sm" />
+            <span>Add Student</span>
+          </button>
+        </div>
       </div>
 
       {/* Stats */}
@@ -426,11 +517,11 @@ const Students: React.FC = () => {
                     <td className="px-3 py-3 whitespace-nowrap text-sm font-medium">
                       <div className="flex items-center space-x-1.5">
                         <button 
-                          onClick={() => openEditModal(student)} 
+                          onClick={() => navigate(`/admin/student-history/${student._id || student.id}`)} 
                           className="text-primary-600 hover:text-primary-900 p-1"
-                          title="View Details"
+                          title="View History"
                         >
-                          <FaEye className="text-sm" />
+                          <FaHistory className="text-sm" />
                         </button>
                         <button 
                           onClick={() => openEditModal(student)} 
@@ -440,7 +531,7 @@ const Students: React.FC = () => {
                           <FaEdit className="text-sm" />
                         </button>
                         <button
-                          onClick={() => handleDelete(student.id)}
+                          onClick={() => handleDelete(student._id || student.id)}
                           className="text-red-600 hover:text-red-900 p-1"
                           title="Delete"
                         >
@@ -732,6 +823,136 @@ const Students: React.FC = () => {
                 <button type="submit" className="btn-primary px-3 py-1.5 text-sm">Save Student</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk Add Students Modal */}
+      {showBulkModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40 p-4">
+          <div className="bg-white rounded-lg w-full max-w-4xl max-h-[90vh] overflow-y-auto p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-medium">Bulk Add Students</h3>
+              <button onClick={() => setShowBulkModal(false)} className="text-gray-500 hover:text-gray-700 text-xl">✕</button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <label className="block text-sm font-medium text-gray-700">Class <span className="text-red-500">*</span></label>
+                <select
+                  value={bulkClassId}
+                  onChange={(e) => setBulkClassId(e.target.value)}
+                  className="input-field py-2 text-sm"
+                >
+                  <option value="">Select Class</option>
+                  {classes.map((c) => (
+                    <option key={c._id} value={c._id}>
+                      {c.standard} {c.division} ({c.medium})
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500">Class determines standard/medium/shift/stream defaults.</p>
+              </div>
+
+              <div className="space-y-1">
+                <label className="block text-sm font-medium text-gray-700">Expected columns</label>
+                <p className="text-xs text-gray-600">
+                  Required: <span className="font-medium">first_name</span>, <span className="font-medium">last_name</span>
+                </p>
+                <p className="text-xs text-gray-600">
+                  Optional: roll_no, middle_name, gender, phone1, phone2, address, pin, fees, shift, stream, password
+                </p>
+              </div>
+            </div>
+
+            <div className="mt-4 space-y-1">
+              <label className="block text-sm font-medium text-gray-700">Paste CSV/TSV</label>
+              <textarea
+                value={bulkText}
+                onChange={(e) => setBulkText(e.target.value)}
+                className="input-field py-2 text-sm min-h-[180px] font-mono"
+                placeholder={`first_name,last_name,roll_no,gender\nAarav,Patel,1,Male\nDiya,Shah,2,Female`}
+              />
+              <p className="text-xs text-gray-500">Tip: you can paste directly from Excel/Google Sheets (tab-separated works).</p>
+            </div>
+
+            <div className="flex justify-end gap-2 mt-4">
+              <button type="button" onClick={() => setShowBulkModal(false)} className="btn-secondary px-3 py-1.5 text-sm">Close</button>
+              <button
+                type="button"
+                onClick={handleBulkSubmit}
+                disabled={bulkSubmitting}
+                className="btn-primary px-3 py-1.5 text-sm"
+              >
+                {bulkSubmitting ? 'Submitting...' : 'Create Students'}
+              </button>
+            </div>
+
+            {bulkResults && (
+              <div className="mt-5 space-y-3">
+                <div className="card p-3">
+                  <p className="text-sm text-gray-800">
+                    Created: <span className="font-semibold">{bulkResults?.count ?? 0}</span>
+                    {Array.isArray(bulkResults?.errors) ? (
+                      <>
+                        {' '}| Errors: <span className="font-semibold">{bulkResults.errors.length}</span>
+                      </>
+                    ) : null}
+                  </p>
+                </div>
+
+                {Array.isArray(bulkResults?.errors) && bulkResults.errors.length > 0 && (
+                  <div className="card p-3">
+                    <h4 className="text-sm font-semibold text-gray-900 mb-2">Row Errors</h4>
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Row</th>
+                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Message</th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                          {bulkResults.errors.map((e: any, idx: number) => (
+                            <tr key={idx}>
+                              <td className="px-3 py-2 text-sm text-gray-600">{(e.index ?? 0) + 2}</td>
+                              <td className="px-3 py-2 text-sm text-gray-800">{e.message}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <p className="text-xs text-gray-500 mt-2">Row number includes header row (so +2).</p>
+                  </div>
+                )}
+
+                {Array.isArray(bulkResults?.generated_credentials) && bulkResults.generated_credentials.length > 0 && (
+                  <div className="card p-3">
+                    <h4 className="text-sm font-semibold text-gray-900 mb-2">Generated Passwords</h4>
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Row</th>
+                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">GR Number</th>
+                            <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Password</th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                          {bulkResults.generated_credentials.map((g: any, idx: number) => (
+                            <tr key={idx}>
+                              <td className="px-3 py-2 text-sm text-gray-600">{(g.index ?? 0) + 2}</td>
+                              <td className="px-3 py-2 text-sm text-gray-800">{g.gr_number}</td>
+                              <td className="px-3 py-2 text-sm font-mono text-gray-900">{g.password}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}

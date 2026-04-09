@@ -69,7 +69,7 @@ const studentSchema = new mongoose.Schema({
   },
   stream: {
     type: String,
-    enum: ['Science-Maths', 'Science-Bio', 'Commerce', 'Foundation'],
+    enum: ['Science-Maths', 'Science-Bio', 'Commerce', 'Foundation', 'Primary', 'Upper Primary', 'Secondary', 'Higher Secondary'],
   },
   is_delete: {
     type: Boolean,
