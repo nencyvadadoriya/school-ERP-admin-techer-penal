@@ -9,7 +9,7 @@ router.use(auth);
 // CRUD routes
 router.post('/', classController.createClass);
 router.get('/', classController.getAllClasses);
-router.get('/code/:id', classController.getClassById);
+router.get('/code/:code', classController.getClassByCode);
 router.get('/:id', classController.getClassById);
 router.patch('/:id', classController.updateClass);
 router.delete('/:id', classController.deleteClass);

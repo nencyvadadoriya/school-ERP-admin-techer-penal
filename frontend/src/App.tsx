@@ -40,6 +40,7 @@ import TeacherTimetable from './pages/teacher/TeacherTimetable';
 import TeacherExams from './pages/teacher/TeacherExams';
 import TeacherEvents from './pages/teacher/TeacherEvents';
 import TeacherNotices from './pages/teacher/TeacherNotices';
+import StudentLeaveApprovals from './pages/teacher/StudentLeaveApprovals';
 
 // Common
 import Profile from './pages/Profile';
@@ -109,6 +110,7 @@ function AppContent() {
       <Route path="/teacher/homework" element={<PrivateRoute role="teacher"><DashboardLayout><TeacherHomework /></DashboardLayout></PrivateRoute>} />
       <Route path="/teacher/results" element={<PrivateRoute role="teacher"><DashboardLayout><EnterResults /></DashboardLayout></PrivateRoute>} />
       <Route path="/teacher/timetable" element={<PrivateRoute role="teacher"><DashboardLayout><TeacherTimetable /></DashboardLayout></PrivateRoute>} />
+      <Route path="/teacher/leaves" element={<PrivateRoute role="teacher"><DashboardLayout><StudentLeaveApprovals /></DashboardLayout></PrivateRoute>} />
       <Route path="/teacher/events" element={<PrivateRoute role="teacher"><DashboardLayout><TeacherEvents /></DashboardLayout></PrivateRoute>} />
       <Route path="/teacher/notices" element={<PrivateRoute role="teacher"><DashboardLayout><TeacherNotices /></DashboardLayout></PrivateRoute>} />
       <Route path="/teacher/leave" element={<PrivateRoute role="teacher"><DashboardLayout><TeacherLeave /></DashboardLayout></PrivateRoute>} />

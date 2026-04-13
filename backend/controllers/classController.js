@@ -60,6 +60,29 @@ exports.getClassById = async (req, res) => {
   }
 };
 
+// Get class by class_code (robust lookup)
+exports.getClassByCode = async (req, res) => {
+  try {
+    const code = String(req.params.code || '').trim();
+    if (!code) return res.status(400).json({ success: false, message: 'class_code is required' });
+
+    // Try exact match first
+    let classData = await Class.findOne({ class_code: code, is_delete: false });
+    if (classData) return res.status(200).json({ success: true, data: classData });
+
+    // Fallback: load all classes and perform a normalized match (strip non-alphanumerics and compare lowercased)
+    const all = await Class.find({ is_delete: false }).lean();
+    const normalize = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const target = normalize(code);
+    classData = all.find(c => normalize(c.class_code) === target || normalize(`${c.standard}${c.division}${c.medium}`) === target || normalize(`${c.standard}-${c.division}-${c.medium}`) === target);
+
+    if (!classData) return res.status(404).json({ success: false, message: 'Class not found' });
+    res.status(200).json({ success: true, data: classData });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 // Update class
 exports.updateClass = async (req, res) => {
   try {
@@ -111,6 +134,13 @@ exports.assignTeacher = async (req, res) => {
     if (!updatedClass) {
       return res.status(404).json({ success: false, message: 'Class not found' });
     }
+
+    // Ensure all students in this class have the correct class_code
+    const Student = require('../models/Student');
+    await Student.updateMany(
+      { std: updatedClass.standard, division: updatedClass.division, is_delete: false },
+      { $set: { class_code: updatedClass.class_code } }
+    );
 
     // Also update the teacher's assigned_class array if it's not already there
     if (teacher_code) {

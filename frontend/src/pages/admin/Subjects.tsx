@@ -10,6 +10,7 @@ const EMPTY = { subject_code: '', subject_name: '', subject_level: 'Secondary', 
 
 const Subjects = () => {
   const [subjects, setSubjects] = useState([]);
+  const [classes, setClasses] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState(false);
   const [bulkModal, setBulkModal] = useState(false);
@@ -29,10 +30,14 @@ const Subjects = () => {
 
   const fetch = async () => {
     try {
-      const r = await api.get('/subject');
-      setSubjects(r.data.data || []);
+      const [subjectRes, classRes] = await Promise.all([
+        api.get('/subject'),
+        api.get('/class')
+      ]);
+      setSubjects(subjectRes.data.data || []);
+      setClasses(classRes.data.data || []);
     } catch (e) {
-      setSubjects([]);
+      console.error('Error fetching data:', e);
     } finally {
       setLoading(false);
     }
@@ -326,7 +331,9 @@ const Subjects = () => {
                 className="text-xs border border-gray-300 rounded-lg px-2 py-1.5"
               >
                 <option value="">All Std</option>
-                {standards.map(std => <option key={std} value={std}>Class {std}</option>)}
+                {Array.from(new Set(classes.map(c => c.standard))).sort((a, b) => Number(a) - Number(b)).map(std => (
+                  <option key={std} value={std}>Class {std}</option>
+                ))}
               </select>
 
               <select
@@ -759,7 +766,9 @@ const Subjects = () => {
               <label className="block text-xs font-medium text-gray-700 mb-0.5">Class *</label>
               <select className="w-full px-2 py-1.5 text-sm border rounded-lg" name="std" required value={form.std} onChange={handleFormChange}>
                 <option value="">Select</option>
-                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(s => <option key={s} value={s}>Class {s}</option>)}
+                {Array.from(new Set(classes.map(c => c.standard))).sort((a, b) => Number(a) - Number(b)).map(s => (
+                  <option key={s} value={s}>Class {s}</option>
+                ))}
               </select>
             </div>
             <div>

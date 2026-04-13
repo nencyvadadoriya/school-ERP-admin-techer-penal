@@ -50,9 +50,50 @@ const getTeacherDashboard = async (req, res) => {
     const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
     const next2Days = new Date(today); next2Days.setDate(next2Days.getDate() + 2);
 
-    // Get classes assigned to this teacher using teacher_code
-    const myClasses = await Class.find({ teacher_code, is_delete: false });
-    const classCodes = myClasses.map(c => c.class_code);
+    // Get classes assigned to this teacher using teacher_code OR from teacher's assigned_class array
+    const teacher = await Teacher.findOne({ teacher_code, is_delete: false }).lean();
+    console.log('Teacher found for dashboard:', { teacher_code, hasTeacher: !!teacher, assigned: teacher?.assigned_class });
+    const assignedClassCodes = Array.isArray(teacher?.assigned_class) ? teacher.assigned_class.filter(Boolean) : [];
+
+    const myClassesDocs = await Class.find({
+      $or: [
+        { teacher_code, is_delete: false },
+        { class_code: { $in: assignedClassCodes }, is_delete: false }
+      ]
+    }).lean();
+
+    // Ensure we always return something meaningful even if Class doc is missing for an assigned code
+    const myClassesByCode = new Map();
+    myClassesDocs.forEach((c) => {
+      if (c?.class_code) myClassesByCode.set(String(c.class_code), c);
+    });
+    assignedClassCodes.forEach((code) => {
+      if (!myClassesByCode.has(String(code))) {
+        myClassesByCode.set(String(code), { class_code: String(code) });
+      }
+    });
+
+    const myClasses = Array.from(myClassesByCode.values());
+    const classCodes = Array.from(myClassesByCode.keys());
+
+    // Normalize codes to handle mismatches like "1A-English" vs "1-A-English" or "1-A" etc.
+    const normalize = (s) => String(s || '').trim();
+    const withHyphen = (code) => {
+      const m = String(code || '').match(/^(\d+)\s*-?\s*([A-Za-z])\b/);
+      if (!m) return String(code || '');
+      return `${m[1]}-${m[2].toUpperCase()}${String(code).slice(m[0].length)}`;
+    };
+    const withoutHyphen = (code) => {
+      const m = String(code || '').match(/^(\d+)\s*-?\s*([A-Za-z])\b/);
+      if (!m) return String(code || '');
+      return `${m[1]}${m[2].toUpperCase()}${String(code).slice(m[0].length)}`;
+    };
+    const expandedCodes = [...new Set(
+      classCodes
+        .map(normalize)
+        .filter(Boolean)
+        .flatMap((cc) => [cc, withHyphen(cc), withoutHyphen(cc)])
+    )];
 
     const [upcomingExams, upcomingExamsNext2Days, homeworkGiven, myLeaves] = await Promise.all([
       Exam.find({ 
@@ -69,12 +110,48 @@ const getTeacherDashboard = async (req, res) => {
       TeacherLeave.find({ teacher_code, is_delete: false }).sort({ createdAt: -1 }).limit(5),
     ]);
 
-    // Count students in classes assigned to this teacher
-    const totalStudentsInClasses = await Student.countDocuments({ 
-      class_code: { $in: classCodes }, 
-      is_delete: false,
-      is_active: true
+    // Count students in any of the teacher's classes.
+    // We support both exact class_code matches and component matching (std/division).
+    const studentFilter = { is_delete: false, is_active: true };
+    const studentConditions = [];
+
+    // Exact matches for expanded codes
+    if (expandedCodes.length > 0) {
+      studentConditions.push({ class_code: { $in: expandedCodes } });
+    }
+
+    // Component matches (std and division)
+    myClasses.forEach(c => {
+      if (c.standard && c.division) {
+        studentConditions.push({
+          std: String(c.standard),
+          $or: [
+            { division: String(c.division) },
+            { class_name: String(c.division) }
+          ]
+        });
+      } else if (c.class_code) {
+        // Try to parse from code if standard/division missing in Class doc
+        const parts = String(c.class_code).split('-');
+        if (parts.length >= 3) {
+          studentConditions.push({
+            std: parts[1],
+            $or: [
+              { division: parts[2] },
+              { class_name: parts[2] }
+            ]
+          });
+        }
+      }
     });
+
+    if (studentConditions.length > 0) {
+      studentFilter.$or = studentConditions;
+    }
+
+    const totalStudentsInClassesFinal = studentConditions.length > 0 
+      ? await Student.countDocuments(studentFilter)
+      : 0;
 
     // Check if today's attendance was marked
     const todayAtt = await Attendance.find({ 
@@ -88,7 +165,7 @@ const getTeacherDashboard = async (req, res) => {
       success: true,
       data: { 
         myClasses, 
-        totalStudentsInClasses, 
+        totalStudentsInClasses: totalStudentsInClassesFinal, 
         attendancePending, 
         homeworkGiven, 
         upcomingExams,

@@ -22,8 +22,8 @@ const EnterResults: React.FC = () => {
     if (!exam) return;
     setLoading(true);
     try {
-      const r = await studentAPI.getAll();
-      const cls = (r.data.data||[]).filter(s=>s.class_code===exam.class_code);
+      const r = await studentAPI.getAll({ class_code: exam.class_code });
+      const cls = (r.data.data||[]);
       setStudents(cls);
       const init = {};
       cls.forEach(s=>{ init[s._id]=''; });

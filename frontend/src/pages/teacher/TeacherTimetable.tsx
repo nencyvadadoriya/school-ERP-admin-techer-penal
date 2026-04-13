@@ -1,137 +1,186 @@
 import React, { useState, useEffect } from 'react';
-import { timetableAPI, classAPI, subjectAPI, teacherAPI } from '../../services/api';
+import { timetableAPI, classAPI, dashboardAPI } from '../../services/api';
 import Spinner from '../../components/Spinner';
+import { useAuth } from '../../context/AuthContext';
 import { toast } from 'react-toastify';
 
+const TIME_SLOTS = [
+  { period_number: 1, start_time: '07:00', end_time: '07:45' },
+  { period_number: 2, start_time: '07:45', end_time: '08:30' },
+  { period_number: 3, start_time: '08:30', end_time: '09:15' },
+  { period_number: 4, start_time: '09:45', end_time: '10:30' },
+  { period_number: 5, start_time: '10:30', end_time: '11:15' },
+  { period_number: 6, start_time: '11:15', end_time: '12:00' },
+];
+
+const BREAK_SLOT = { start_time: '09:15', end_time: '09:45' };
+
 const TeacherTimetable: React.FC = () => {
-  const [items, setItems] = useState<any[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
+  const { user } = useAuth();
   const [classes, setClasses] = useState<any[]>([]);
-  const [teachers, setTeachers] = useState<any[]>([]);
-  const [subjects, setSubjects] = useState<any[]>([]);
-
-  const flattenTimetables = (timetables: any[]) => {
-    const rows: any[] = [];
-    (timetables || []).forEach((tt) => {
-      const class_code = tt?.class_code;
-      const schedule = Array.isArray(tt?.schedule) ? tt.schedule : [];
-      schedule.forEach((d: any) => {
-        const day = d?.day;
-        const periods = Array.isArray(d?.periods) ? d.periods : [];
-        periods.forEach((p: any) => {
-          rows.push({
-            _id: `${tt?._id || class_code}-${day}-${p?.period_number || ''}`,
-            class_code,
-            day,
-            period: p?.period_number !== undefined && p?.period_number !== null ? String(p.period_number) : '',
-            subject: p?.subject_code || p?.subject_name || '',
-            teacher_code: p?.teacher_code || '',
-          });
-        });
-      });
-    });
-    return rows;
-  };
-
-  const fetch = async () => {
-    try {
-      const r = await timetableAPI.getAll();
-      setItems(flattenTimetables(r.data.data || []));
-    } catch (e) {
-      setItems([]);
-    } finally { setLoading(false); }
-  };
+  const [viewClassCode, setViewClassCode] = useState<string>('');
+  const [viewTimetable, setViewTimetable] = useState<any | null>(null);
+  const [viewLoading, setViewLoading] = useState<boolean>(false);
+  const [metaLoading, setMetaLoading] = useState<boolean>(true);
 
   const fetchMeta = async () => {
     try {
-      const [cR, tR, sR] = await Promise.all([
-        classAPI.getAll(),
-        teacherAPI.getAll(),
-        subjectAPI.getAll(),
-      ]);
-      setClasses(cR.data.data || []);
-      setTeachers(tR.data.data || []);
-      setSubjects(sR.data.data || []);
-    } catch (e: any) {
-      toast.error('Failed to load metadata');
+      const dR = await dashboardAPI.teacher();
+      const myClasses = dR.data.data?.myClasses || [];
+      setClasses(myClasses);
+      
+      const assigned = Array.isArray(user?.assigned_class) ? user.assigned_class : [];
+      const firstCode = myClasses[0]?.class_code || assigned[0] || '';
+      
+      if (firstCode) {
+        setViewClassCode(firstCode);
+        fetchViewTimetable(firstCode);
+      }
+    } catch (e: any) { 
+      console.error('Failed to load classes', e);
+      const assigned = Array.isArray(user?.assigned_class) ? user.assigned_class : [];
+      setClasses(assigned.map(c => ({ class_code: c })));
+      if (assigned[0]) {
+        setViewClassCode(assigned[0]);
+        fetchViewTimetable(assigned[0]);
+      }
+    } finally { 
+      setMetaLoading(false); 
     }
   };
 
-  useEffect(() => {
-    fetch();
-    fetchMeta();
-  }, []);
+  useEffect(() => { fetchMeta(); }, [user?.assigned_class]);
 
-  const getClassCode = (c: any) => {
-    if (!c) return '';
-    if (c.class_code) return String(c.class_code);
-    const parts = [c.standard, c.division, c.medium, c.stream, c.shift]
-      .map((v) => (v === undefined || v === null ? '' : String(v).trim()))
-      .filter(Boolean);
-    return parts.join('-');
+  const fetchViewTimetable = async (classCode: string) => {
+    if (!classCode) { setViewTimetable(null); return; }
+    setViewLoading(true);
+    try {
+      // Resolve canonical class code first (handles variations like '1A-English' vs '1-A-English')
+      let codeToUse = String(classCode || '').trim();
+      try {
+        const cR = await classAPI.getByCode(codeToUse);
+        if (cR?.data?.data?.class_code) codeToUse = cR.data.data.class_code;
+      } catch (err) {
+        // ignore and use original code
+      }
+      const r = await timetableAPI.getByClass(codeToUse);
+      setViewTimetable(r.data.data || null);
+    } catch (e: any) { setViewTimetable(null); }
+    finally { setViewLoading(false); }
   };
 
   const getClassLabel = (c: any) => {
     if (!c) return '';
-    const code = getClassCode(c);
-    const standard = c.standard ? String(c.standard) : '';
-    const division = c.division ? String(c.division) : '';
-    const medium = c.medium ? String(c.medium) : '';
-    const stream = c.stream ? String(c.stream) : '';
-    const shift = c.shift ? String(c.shift) : '';
-    const meta = [standard && `Std ${standard}`, division && `Div ${division}`, medium, stream, shift]
-      .filter(Boolean)
-      .join(' | ');
+    const parts = [c.standard, c.division, c.medium, c.stream, c.shift]
+      .map((v:any) => (v === undefined || v === null ? '' : String(v).trim()))
+      .filter(Boolean);
+    const code = c.class_code || parts.join('-');
+    const meta = [c.standard && `Std ${c.standard}`, c.division && `Div ${c.division}`, c.medium]
+      .filter(Boolean).join(' | ');
     return meta ? `${code} (${meta})` : code;
   };
 
-  const getSubjectLabelByCode = (code: any) => {
-    if (!code) return '';
-    const s = subjects.find((x) => x.subject_code === code);
-    return s ? `${s.subject_name} (${s.subject_code})` : String(code);
-  };
+  const days = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
 
-  const getTeacherLabelByCode = (code: any) => {
-    if (!code) return '';
-    const t = teachers.find((x) => x.teacher_code === code);
-    return t ? `${t.first_name} ${t.last_name} (${t.teacher_code})` : String(code);
-  };
-
-  if (loading) return <Spinner />;
+  if (metaLoading) return <Spinner />;
 
   return (
     <div className="space-y-5">
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Class Timetable</h1>
-        <p className="text-sm text-gray-500">View class schedules and periods</p>
+        <p className="text-sm text-gray-500">View timetable for your assigned class</p>
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray-100 text-left text-gray-500">
-                <th className="pb-3 font-medium">Class</th>
-                <th className="pb-3 font-medium">Day</th>
-                <th className="pb-3 font-medium">Period</th>
-                <th className="pb-3 font-medium">Subject</th>
-                <th className="pb-3 font-medium">Teacher</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.length === 0 ? (
-                <tr><td colSpan={5} className="text-center py-8 text-gray-400">No timetable entries available</td></tr>
-              ) : items.map(it => (
-                <tr key={it._id} className="border-b border-gray-50 hover:bg-gray-50">
-                  <td className="py-3 font-medium text-primary-600">{getClassLabel(classes.find((c) => getClassCode(c) === it.class_code) || { class_code: it.class_code })}</td>
-                  <td className="py-3">{it.day || '—'}</td>
-                  <td className="py-3">{it.period || '—'}</td>
-                  <td className="py-3">{getSubjectLabelByCode(it.subject) || it.subject || '—'}</td>
-                  <td className="py-3">{it.teacher_code ? getTeacherLabelByCode(it.teacher_code) : '—'}</td>
-                </tr>
+        <div className="flex items-end gap-3 md:items-center md:justify-between flex-col md:flex-row">
+          <div className="w-full md:w-80">
+            <label className="block text-sm font-medium text-gray-700 mb-1">View Timetable (Class)</label>
+            <select className="input-field" value={viewClassCode} onChange={(e)=>{ const next = e.target.value; setViewClassCode(next); fetchViewTimetable(next); }}>
+              <option value="">Select class</option>
+              {classes.map((c: any) => (
+                <option key={c.class_code} value={c.class_code}>
+                  {c.standard ? `${c.class_code} (Std ${c.standard}-${c.division})` : c.class_code}
+                </option>
               ))}
-            </tbody>
-          </table>
+            </select>
+          </div>
+          <div className="text-xs text-gray-500">{viewLoading ? 'Loading timetable...' : viewTimetable ? `Showing: ${viewTimetable.class_code}` : 'No timetable selected'}</div>
+        </div>
+
+        <div className="mt-4 overflow-x-auto">
+          {viewLoading ? (
+            <div className="py-10"><Spinner /></div>
+          ) : !viewTimetable ? (
+            <div className="text-center py-10 text-gray-400">No timetable found for this class</div>
+          ) : (
+            <table className="min-w-full text-xs border border-gray-100">
+              <thead>
+                <tr className="bg-gray-50 text-gray-600">
+                  <th className="px-3 py-2 border-b border-gray-100 text-left whitespace-nowrap">Time / Period</th>
+                  {days.map(d=> <th key={d} className="px-3 py-2 border-b border-gray-100 text-left whitespace-nowrap">{d}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {TIME_SLOTS.slice(0,3).map(slot => (
+                  <tr key={`slot-${slot.period_number}`} className="border-t border-gray-50">
+                    <td className="px-3 py-2 whitespace-nowrap text-gray-700 font-medium">
+                      <div>Period {slot.period_number}</div>
+                      <div className="text-xs text-gray-400">{slot.start_time} - {slot.end_time}</div>
+                    </td>
+                    {days.map(d => {
+                      const daySchedule = Array.isArray(viewTimetable?.schedule) ? viewTimetable.schedule.find((s:any)=>s.day===d) : null;
+                      const cell = daySchedule?.periods?.find((p:any)=>Number(p.period_number) === Number(slot.period_number));
+                      const subj = cell?.subject_name || cell?.subject_code;
+                      const tname = cell?.teacher_name || cell?.teacher_code;
+                      return (
+                        <td key={d} className="px-3 py-2 align-top border-l border-gray-50 min-w-[160px]">
+                          {cell ? (
+                            <div className="space-y-1">
+                              <div className="font-semibold text-gray-900">{subj || '—'}</div>
+                              <div className="text-gray-500 text-xs">{tname || '—'}</div>
+                            </div>
+                          ) : <span className="text-gray-300">—</span>}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+
+                <tr className="bg-blue-50">
+                  <td className="px-3 py-2 whitespace-nowrap text-gray-700 font-medium">
+                    <div>BREAK</div>
+                    <div className="text-xs text-gray-500">{BREAK_SLOT.start_time} - {BREAK_SLOT.end_time}</div>
+                  </td>
+                  {days.map(d=> <td key={d} className="px-3 py-2 text-blue-600 text-sm">Break</td>)}
+                </tr>
+
+                {TIME_SLOTS.slice(3,6).map(slot => (
+                  <tr key={`slot-${slot.period_number}`} className="border-t border-gray-50">
+                    <td className="px-3 py-2 whitespace-nowrap text-gray-700 font-medium">
+                      <div>Period {slot.period_number}</div>
+                      <div className="text-xs text-gray-400">{slot.start_time} - {slot.end_time}</div>
+                    </td>
+                    {days.map(d => {
+                      const daySchedule = Array.isArray(viewTimetable?.schedule) ? viewTimetable.schedule.find((s:any)=>s.day===d) : null;
+                      const cell = daySchedule?.periods?.find((p:any)=>Number(p.period_number) === Number(slot.period_number));
+                      const subj = cell?.subject_name || cell?.subject_code;
+                      const tname = cell?.teacher_name || cell?.teacher_code;
+                      return (
+                        <td key={d} className="px-3 py-2 align-top border-l border-gray-50 min-w-[160px]">
+                          {cell ? (
+                            <div className="space-y-1">
+                              <div className="font-semibold text-gray-900">{subj || '—'}</div>
+                              <div className="text-gray-500 text-xs">{tname || '—'}</div>
+                            </div>
+                          ) : <span className="text-gray-300">—</span>}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       </div>
     </div>

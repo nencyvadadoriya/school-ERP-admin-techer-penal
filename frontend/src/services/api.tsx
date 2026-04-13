@@ -79,6 +79,8 @@ export const attendanceAPI = {
   mark: (data) => api.post('/attendance', data),
   getAll: (params?: any) => api.get('/attendance', { params }),
   getStudentSummary: (params?: any) => api.get('/attendance/student', { params }),
+  getClassMonthSummary: (params?: any) => api.get('/attendance/class-summary', { params }),
+  getDaily: (params?: any) => api.get('/attendance/daily', { params }),
   delete: (id) => api.delete(`/attendance/${id}`),
 };
 

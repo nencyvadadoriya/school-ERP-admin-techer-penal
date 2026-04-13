@@ -5,7 +5,7 @@ import { classAPI, subjectAPI, teacherAPI, timetableAPI } from '../../services/a
 import Modal from '../../components/Modal';
 import Spinner from '../../components/Spinner';
 
-const EMPTY = { class_code: '', day: 'Monday', period: '', subject: '', teacher_code: '' };
+const EMPTY = { class_code: '', day: 'Monday', periods: [] as number[], subject: '', teacher_code: '' };
 
 // Define time slots - 6 lectures of 45 minutes each
 // 3 lectures before break, 3 after break
@@ -27,6 +27,28 @@ const Timetable: React.FC = () => {
   const [modalOpen, setModalOpen] = useState<boolean>(false);
   const [editing, setEditing] = useState<any | null>(null);
   const [form, setForm] = useState(EMPTY);
+
+  const handleSubjectChange = (subjectCode: string) => {
+    const matchingTeachers = teachers.filter((t) => Array.isArray(t?.subjects) && t.subjects.includes(subjectCode));
+    const autoTeacherCode = matchingTeachers.length > 0 ? matchingTeachers[0].teacher_code : '';
+    
+    setForm((prev) => ({
+      ...prev,
+      subject: subjectCode,
+      teacher_code: autoTeacherCode,
+    }));
+  };
+
+  const togglePeriod = (pNum: number) => {
+    setForm(prev => {
+      const isSelected = prev.periods.includes(pNum);
+      if (isSelected) {
+        return { ...prev, periods: prev.periods.filter(p => p !== pNum) };
+      } else {
+        return { ...prev, periods: [...prev.periods, pNum] };
+      }
+    });
+  };
 
   const [viewClassCode, setViewClassCode] = useState<string>('');
   const [viewTimetable, setViewTimetable] = useState<any | null>(null);
@@ -70,7 +92,19 @@ const Timetable: React.FC = () => {
   const buildTimetablePayloadFromForm = (ttId: any | undefined, f: any) => {
     const subject = subjects.find((s) => s.subject_code === f.subject);
     const teacher = teachers.find((t) => t.teacher_code === f.teacher_code);
-    const selectedSlot = TIME_SLOTS.find(slot => String(slot.period_number) === String(f.period));
+    
+    const selectedPeriods = f.periods.map((pNum: any) => {
+      const slot = TIME_SLOTS.find(slot => String(slot.period_number) === String(pNum));
+      return {
+        period_number: slot?.period_number || Number(pNum),
+        start_time: slot?.start_time || '',
+        end_time: slot?.end_time || '',
+        subject_code: subject?.subject_code || f.subject || undefined,
+        subject_name: subject?.subject_name,
+        teacher_code: teacher?.teacher_code || f.teacher_code || undefined,
+        teacher_name: teacher ? `${teacher.first_name} ${teacher.last_name}` : undefined,
+      };
+    });
     
     return {
       _id: ttId,
@@ -78,17 +112,7 @@ const Timetable: React.FC = () => {
       schedule: [
         {
           day: f.day,
-          periods: [
-            {
-              period_number: selectedSlot?.period_number || Number(f.period),
-              start_time: selectedSlot?.start_time || '',
-              end_time: selectedSlot?.end_time || '',
-              subject_code: subject?.subject_code || f.subject || undefined,
-              subject_name: subject?.subject_name,
-              teacher_code: teacher?.teacher_code || f.teacher_code || undefined,
-              teacher_name: teacher ? `${teacher.first_name} ${teacher.last_name}` : undefined,
-            },
-          ],
+          periods: selectedPeriods,
         },
       ],
     };
@@ -153,10 +177,12 @@ const Timetable: React.FC = () => {
   }, [metaLoading, classes]);
 
   const openAdd = () => { setEditing(null); setForm(EMPTY); setModalOpen(true); };
-  const openEdit = (it) => {
+  const openEdit = (it: any) => {
     setEditing(it);
     setForm({
-      ...it,
+      class_code: it.class_code,
+      day: it.day,
+      periods: [Number(it.period)],
       subject: it?.subject || '',
       teacher_code: it?.teacher_code || '',
     });
@@ -480,37 +506,37 @@ const Timetable: React.FC = () => {
                 {['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'].map(d=> <option key={d}>{d}</option>)}
               </select>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Period</label>
-              <select 
-                className="input-field" 
-                value={form.period} 
-                onChange={e=>setForm({...form, period: e.target.value})}
-                disabled={Boolean(editing)}
-                required
-              >
-                <option value="">Select period</option>
-                {TIME_SLOTS.map(slot => (
-                  <option key={slot.period_number} value={slot.period_number}>
-                    Period {slot.period_number} ({slot.start_time} - {slot.end_time})
-                  </option>
-                ))}
-              </select>
+            <div className="col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Periods (Bulk Select)</label>
+              <div className="flex flex-wrap gap-2 p-2 border rounded-lg bg-gray-50">
+                {TIME_SLOTS.map(slot => {
+                  const isSelected = form.periods.includes(slot.period_number);
+                  return (
+                    <button
+                      key={slot.period_number}
+                      type="button"
+                      onClick={() => togglePeriod(slot.period_number)}
+                      className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                        isSelected 
+                          ? 'bg-primary-600 text-white' 
+                          : 'bg-white text-gray-600 border border-gray-200 hover:border-primary-300'
+                      }`}
+                    >
+                      P{slot.period_number}
+                    </button>
+                  );
+                })}
+              </div>
+              {form.periods.length === 0 && <p className="text-[10px] text-red-500 mt-1">Select at least one period</p>}
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Subject</label>
               <select
                 className="input-field"
                 value={form.subject}
-                onChange={(e) => {
-                  const nextSubject = e.target.value;
-                  setForm((prev) => ({
-                    ...prev,
-                    subject: nextSubject,
-                    teacher_code: '',
-                  }));
-                }}
+                onChange={(e) => handleSubjectChange(e.target.value)}
                 disabled={metaLoading}
+                required
               >
                 <option value="">Select subject</option>
                 {subjectOptions.map((s) => (
@@ -520,13 +546,14 @@ const Timetable: React.FC = () => {
                 ))}
               </select>
             </div>
-            <div className="col-span-2">
+            <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Teacher Code</label>
               <select
                 className="input-field"
                 value={form.teacher_code}
                 onChange={(e) => setForm({ ...form, teacher_code: e.target.value })}
                 disabled={metaLoading}
+                required
               >
                 <option value="">Select teacher</option>
                 {teacherOptions.map((t) => (

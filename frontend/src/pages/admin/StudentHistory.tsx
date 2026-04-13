@@ -14,15 +14,14 @@ const StudentHistory: React.FC = () => {
     const fetchStudentDetails = async () => {
       try {
         if (!id) return;
-        const response = await studentAPI.getAll(); // Assuming we filter from all for now if no direct getById
-        const foundStudent = response.data.data.find((s: any) => (s._id || s.id) === id);
-        
-        if (foundStudent) {
-          setStudent(foundStudent);
-        } else {
+        const response = await studentAPI.getById(id);
+        const foundStudent = response?.data?.data;
+        if (!foundStudent) {
           toast.error('Student not found');
           navigate('/admin/students');
+          return;
         }
+        setStudent(foundStudent);
       } catch (error) {
         console.error('Error fetching student details:', error);
         toast.error('Error fetching student details');
@@ -43,6 +42,9 @@ const StudentHistory: React.FC = () => {
   }
 
   if (!student) return null;
+
+  const derivedMedium = student?.class_details?.medium || student?.medium;
+  const derivedShift = student?.shift || student?.class_details?.shift;
 
   const formatDate = (dateString: string) => {
     if (!dateString) return 'N/A';
@@ -133,12 +135,20 @@ const StudentHistory: React.FC = () => {
                 <span className="font-medium text-gray-900">Class {student.std}</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-gray-500">Class Code</span>
-                <span className="font-medium text-gray-900">{student.class_code || 'N/A'}</span>
+                <span className="text-gray-500">Class</span>
+                <span className="font-medium text-gray-900">{student.class_name || student.class_code || student.classCode || 'N/A'}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-gray-500">Medium</span>
+                <span className="font-medium text-gray-900">{derivedMedium}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-gray-500">Roll No</span>
-                <span className="font-medium text-gray-900">{student.roll_no || 'N/A'}</span>
+                <span className="font-medium text-gray-900">{student.roll_no || student.rollNo || 'N/A'}</span>
+              </div>
+              <div className="flex items-center justify-between text-primary-600 font-bold">
+                <span className="text-gray-500">Fees Amount</span>
+                <span>₹{student.fees || 0}</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-gray-500">Stream</span>
@@ -176,7 +186,7 @@ const StudentHistory: React.FC = () => {
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-gray-500">Shift</span>
-                <span className="font-medium text-gray-900">{student.shift || 'N/A'}</span>
+                <span className="font-medium text-gray-900">{derivedShift || 'N/A'}</span>
               </div>
             </div>
           </div>

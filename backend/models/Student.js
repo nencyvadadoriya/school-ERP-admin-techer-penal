@@ -48,6 +48,11 @@ const studentSchema = new mongoose.Schema({
     type: String,
     trim: true,
   },
+  class_name: {
+    type: String,
+    enum: ['A', 'B', 'C', 'D'],
+    trim: true,
+  },
   class_code: {
     type: String,
     trim: true,
@@ -66,6 +71,11 @@ const studentSchema = new mongoose.Schema({
   shift: {
     type: String,
     enum: ['Morning', 'Afternoon'],
+  },
+  medium: {
+    type: String,
+    enum: ['English', 'Gujarati', 'Hindi'],
+    required: [true, 'Medium is required'],
   },
   stream: {
     type: String,

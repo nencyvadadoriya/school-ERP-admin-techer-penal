@@ -7,43 +7,47 @@ const createOrUpdateTimetable = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Class code and schedule are required' });
     }
 
-    const newDayEntry = schedule[0];
-    const newPeriod = newDayEntry.periods[0];
-    const targetDay = newDayEntry?.day;
-    const targetPeriodNumber = newPeriod?.period_number;
-
-    if (!targetDay) {
-      return res.status(400).json({ success: false, message: 'Day is required' });
-    }
-    if (targetPeriodNumber === undefined || targetPeriodNumber === null || Number.isNaN(Number(targetPeriodNumber))) {
-      return res.status(400).json({ success: false, message: 'period_number is required' });
-    }
-
     let tt = await TimeTable.findOne({ class_code, is_delete: false });
 
     if (!tt) {
       tt = new TimeTable({
         class_code,
-        schedule: [newDayEntry],
+        schedule: schedule, // Save the entire provided schedule
       });
     } else {
-      const dayIndex = tt.schedule.findIndex(s => s.day === newDayEntry.day);
-      if (dayIndex > -1) {
-        const periodIndex = tt.schedule[dayIndex].periods.findIndex(p => Number(p.period_number) === Number(targetPeriodNumber));
-        if (periodIndex > -1) tt.schedule[dayIndex].periods[periodIndex] = newPeriod;
-        else tt.schedule[dayIndex].periods.push(newPeriod);
+      for (const newDayEntry of schedule) {
+        const targetDay = newDayEntry?.day;
+        if (!targetDay) continue;
 
-        tt.schedule[dayIndex].periods.sort((a, b) => Number(a.period_number) - Number(b.period_number));
-      } else {
-        tt.schedule.push(newDayEntry);
+        const dayIndex = tt.schedule.findIndex(s => s.day === targetDay);
+        if (dayIndex > -1) {
+          for (const newPeriod of newDayEntry.periods) {
+            const targetPeriodNumber = newPeriod?.period_number;
+            if (targetPeriodNumber === undefined || targetPeriodNumber === null) continue;
+
+            const periodIndex = tt.schedule[dayIndex].periods.findIndex(p => Number(p.period_number) === Number(targetPeriodNumber));
+            if (periodIndex > -1) {
+              tt.schedule[dayIndex].periods[periodIndex] = newPeriod;
+            } else {
+              tt.schedule[dayIndex].periods.push(newPeriod);
+            }
+          }
+          tt.schedule[dayIndex].periods.sort((a, b) => Number(a.period_number) - Number(b.period_number));
+        } else {
+          tt.schedule.push(newDayEntry);
+        }
       }
     }
 
     // If this is an edit that moved the slot, remove old slot to avoid duplicates
+    // Note: This logic is mainly for single-entry edits from the list view
     if (
       old_day &&
-      (String(old_day) !== String(targetDay) || (old_period_number !== undefined && old_period_number !== null && Number(old_period_number) !== Number(targetPeriodNumber)))
+      (old_period_number !== undefined && old_period_number !== null)
     ) {
+      // Find if the new schedule actually contains the "new" position of this old slot
+      // to decide if we should really delete it. For bulk add, we might not want this
+      // but keeping it for compatibility with single-edit.
       const oldDayIdx = tt.schedule.findIndex((s) => s.day === old_day);
       if (oldDayIdx > -1) {
         tt.schedule[oldDayIdx].periods = (tt.schedule[oldDayIdx].periods || []).filter(

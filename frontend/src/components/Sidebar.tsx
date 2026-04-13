@@ -66,6 +66,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggleSidebar }) => {
     { path: '/teacher/exams', icon: FaClipboardList, label: 'Exams', section: 'academic' },
     { path: '/teacher/results', icon: FaFileAlt, label: 'Results', section: 'academic' },
     { path: '/teacher/timetable', icon: FaClock, label: 'Timetable', section: 'academic' },
+      { path: '/teacher/leaves', icon: FaFileAlt, label: 'Student Leaves', section: 'communication' },
     { path: '/teacher/notices', icon: FaBell, label: 'Notices', section: 'communication' },
     { path: '/teacher/events', icon: FaCalendarAlt, label: 'Events', section: 'communication' },
     { path: '/teacher/leave', icon: FaFileAlt, label: 'Leave Application', section: 'communication' },
