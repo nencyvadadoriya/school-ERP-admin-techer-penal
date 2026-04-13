@@ -40,6 +40,7 @@ export const teacherAPI = {
   update: (id, data) => api.patch(`/teacher/${id}`, data),
   updateImage: (id, formData) => api.patch(`/teacher/${id}`, formData),
   delete: (id) => api.delete(`/teacher/${id}`),
+  assignSubjects: (id, data) => api.post(`/teacher/${id}/assign-subjects`, data),
 };
 
 export const studentAPI = {

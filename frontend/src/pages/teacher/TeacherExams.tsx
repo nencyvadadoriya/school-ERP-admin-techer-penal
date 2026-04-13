@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { FaPlus, FaEdit, FaTrash, FaSearch } from 'react-icons/fa';
 import { toast } from 'react-toastify';
-import { examAPI, classAPI, subjectAPI } from '../../services/api';
+import { examAPI, dashboardAPI, subjectAPI } from '../../services/api';
 import Modal from '../../components/Modal';
 import Spinner from '../../components/Spinner';
 import { useAuth } from '../../context/AuthContext';
@@ -13,6 +13,7 @@ const TeacherExams: React.FC = () => {
   const [exams, setExams] = useState<any[]>([]);
   const [classes, setClasses] = useState<any[]>([]);
   const [subjects, setSubjects] = useState<any[]>([]);
+  const [subjectAssignments, setSubjectAssignments] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [metaLoading, setMetaLoading] = useState<boolean>(true);
   const [modal, setModal] = useState<boolean>(false);
@@ -20,12 +21,9 @@ const TeacherExams: React.FC = () => {
   const [form, setForm] = useState(EMPTY);
   const [search, setSearch] = useState<string>('');
   
-  const myClasses = user?.assigned_class || [];
-
   const fetch = async () => {
     try { 
       const r = await examAPI.getAll({}); 
-      // Show all exams to teachers so they can see Admin-added ones too
       setExams(r.data.data || []); 
     }
     catch(e){} finally { setLoading(false); }
@@ -33,14 +31,62 @@ const TeacherExams: React.FC = () => {
 
   const fetchMeta = async () => {
     try {
-      const [cR, sR] = await Promise.all([
-        classAPI.getAll(),
+      const [dR, sR] = await Promise.all([
+        dashboardAPI.teacher(),
         subjectAPI.getAll(),
       ]);
-      // For teachers, only show their assigned classes in the dropdown
-      const allCls = cR.data.data || [];
-      const teacherCls = allCls.filter((c: any) => myClasses.includes(c.class_code));
-      setClasses(teacherCls);
+      // Use classes from teacher dashboard data
+      const teacherData = dR.data.data || {};
+      const myClasses = teacherData.myClasses || [];
+      const subjectAssignments = teacherData.subjectAssignments || [];
+      
+      console.log('Teacher Dashboard Data:', { myClasses, subjectAssignments });
+
+      let filteredClasses = [];
+
+      if (myClasses.length > 0) {
+        filteredClasses = myClasses.filter((c: any) => {
+          // 1. Match by teacher_code (if they are the class teacher)
+          if (c.teacher_code && user?.teacher_code && String(c.teacher_code) === String(user?.teacher_code)) return true;
+          
+          // 2. Match by subject assignments
+          return subjectAssignments.some((a: any) => {
+            const classIdMatch = a.class_id && c._id && String(a.class_id) === String(c._id);
+            const classNameMatch = a.class_name && c.class_code && String(a.class_name).includes(String(c.class_code));
+            const standardStr = `${c.standard} - ${c.division}`;
+            const formattedNameMatch = a.class_name && String(a.class_name).includes(standardStr);
+            
+            return classIdMatch || classNameMatch || formattedNameMatch;
+          });
+        });
+      }
+
+      // LAST RESORT: If filtered list is empty, but we have subject assignments, 
+      // try to find classes from the assignments themselves if they aren't in myClasses
+      if (filteredClasses.length === 0 && subjectAssignments.length > 0) {
+        console.warn('Filtered classes empty, trying to derive from subject assignments');
+        const derivedClasses = subjectAssignments.map((a: any) => ({
+          _id: a.class_id,
+          class_code: a.class_name,
+          standard: a.class_name?.split('-')[0] || a.class_name,
+          division: a.class_name?.split('-')[1] || '',
+          medium: a.medium || 'English'
+        }));
+        
+        // Unique by class_code/name
+        filteredClasses = Array.from(new Map(derivedClasses.map(c => [c.class_code, c])).values());
+      }
+
+      // FINAL FALLBACK: If still empty, show all myClasses from dashboard
+      if (filteredClasses.length === 0 && myClasses.length > 0) {
+        console.warn('Fallback to all myClasses');
+        filteredClasses = myClasses;
+      }
+
+      console.log('Final Filtered Classes:', filteredClasses);
+
+      setClasses(filteredClasses);
+      setSubjectAssignments(subjectAssignments);
       setSubjects(sR.data.data || []);
     } catch (e) {
       toast.error('Failed to load classes or subjects');
@@ -53,6 +99,16 @@ const TeacherExams: React.FC = () => {
     fetch();
     fetchMeta();
   }, []);
+
+  const handleClassChange = (classCode: string) => {
+    const selected = classes.find(c => c.class_code === classCode);
+    setForm({ 
+      ...form, 
+      class_code: classCode, 
+      medium: selected?.medium || '', 
+      subject_code: '' 
+    });
+  };
 
   const handleSubmit = async (e: any) => {
     e.preventDefault();
@@ -78,14 +134,49 @@ const TeacherExams: React.FC = () => {
     e.subject_code?.toLowerCase().includes(search.toLowerCase())
   );
 
-  const classOptions = form.medium 
-    ? classes.filter(c => c.medium === form.medium)
-    : [];
+  const getFilteredSubjects = () => {
+    if (!form.class_code) return [];
+    
+    // Find the class from the teacher's classes list
+    const selectedClass = classes.find(c => 
+      c.class_code === form.class_code || String(c.standard) === String(form.class_code)
+    );
+    
+    if (!selectedClass) return [];
 
-  const selectedClass = classes.find(c => c.class_code === form.class_code);
-  const subjectOptions = selectedClass?.subjects?.length
-    ? subjects.filter(s => selectedClass.subjects.includes(s.subject_code))
-    : subjects;
+    // Filter subjects based on admin assignments for THIS specific teacher
+    // subjectAssignments comes from teacherData.subjectAssignments in fetchMeta()
+    const assignedForThisClass = subjectAssignments.filter(a => {
+      // Match by class_id if both exist
+      if (a.class_id && selectedClass._id && String(a.class_id) === String(selectedClass._id)) {
+        return true;
+      }
+      // Match by class_name/standard if IDs don't match or aren't available
+      if (a.class_name && selectedClass.class_code && String(a.class_name).includes(selectedClass.class_code)) {
+        return true;
+      }
+      // Match by standard name (e.g., "Std 1 - Div A")
+      const standardStr = `${selectedClass.standard} - ${selectedClass.division}`;
+      if (a.class_name && a.class_name.includes(standardStr)) {
+        return true;
+      }
+      return false;
+    });
+
+    if (assignedForThisClass.length > 0) {
+      return assignedForThisClass.map(a => ({
+        _id: a.subject_id,
+        subject_name: a.subject_name,
+        subject_code: a.subject_id
+      }));
+    }
+
+    // Fallback: If no specific assignments found, show subjects for this standard/medium
+    return subjects.filter(s => 
+      String(s.std) === String(selectedClass.standard) && 
+      s.medium === selectedClass.medium
+    );
+  };
 
   if (loading) return <Spinner />;
 
@@ -146,7 +237,7 @@ const TeacherExams: React.FC = () => {
                     <td className="py-3 font-medium text-gray-900">{ex.exam_name}</td>
                     <td className="py-3">{ex.medium || '—'}</td>
                     <td className="py-3 text-primary-600 font-medium">{ex.class_code}</td>
-                    <td className="py-3">{ex.subject_code}</td>
+                    <td className="py-3">{ex.subject_name || ex.subject_code}</td>
                     <td className="py-3">{new Date(ex.exam_date).toLocaleDateString()}</td>
                     <td className="py-3">
                       <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${typeColors[ex.exam_type] || 'bg-gray-100 text-gray-700'}`}>
@@ -187,37 +278,41 @@ const TeacherExams: React.FC = () => {
             </div>
             
             <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Class *</label>
+              <select
+                className="input-field"
+                required
+                value={form.class_code}
+                onChange={(e) => handleClassChange(e.target.value)}
+                disabled={metaLoading}
+              >
+                <option value="">Select class</option>
+                {classes.map((c) => (
+                  <option key={c._id || c.class_code} value={c.class_code}>
+                    {c.class_code} (Std {c.standard}-{c.division} | {c.medium})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Medium *</label>
               <select
                 className="input-field"
                 required
                 value={form.medium}
-                onChange={(e) => setForm({ ...form, medium: e.target.value, class_code: '', subject_code: '' })}
+                onChange={(e) => setForm({ ...form, medium: e.target.value })}
                 disabled={metaLoading}
               >
                 <option value="">Select medium</option>
                 <option value="Gujarati">Gujarati</option>
                 <option value="English">English</option>
+                <option value="Hindi">Hindi</option>
               </select>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Class Code *</label>
-              <select
-                className="input-field"
-                required
-                value={form.class_code}
-                onChange={(e) => setForm({ ...form, class_code: e.target.value, subject_code: '' })}
-                disabled={metaLoading || !form.medium}
-              >
-                <option value="">Select class</option>
-                {classOptions.map((c) => (
-                  <option key={c._id} value={c.class_code}>{c.class_code} (Std {c.standard})</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Subject Code *</label>
+            <div className="col-span-2">
+              <label className="block text-sm font-medium text-gray-700 mb-1">Subject *</label>
               <select
                 className="input-field"
                 required
@@ -226,8 +321,8 @@ const TeacherExams: React.FC = () => {
                 disabled={metaLoading || !form.class_code}
               >
                 <option value="">Select subject</option>
-                {subjectOptions.map((s) => (
-                  <option key={s._id} value={s.subject_code}>{s.subject_name} ({s.subject_code})</option>
+                {getFilteredSubjects().map((s, idx) => (
+                  <option key={s._id || idx} value={s.subject_name}>{s.subject_name}</option>
                 ))}
               </select>
             </div>

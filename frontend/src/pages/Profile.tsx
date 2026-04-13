@@ -157,197 +157,216 @@ const Profile: React.FC = () => {
     }
   };
 
+  const [examResults, setExamResults] = useState<any[]>([]);
+  const [loadingResults, setLoadingResults] = useState(false);
+
+  useEffect(() => {
+    if (user?.role === 'student') {
+      fetchStudentResults();
+    }
+  }, [user]);
+
+  const fetchStudentResults = async () => {
+    try {
+      setLoadingResults(true);
+      const res = await examAPI.getResults({ gr_number: user?.gr_number });
+      setExamResults(res.data.data || []);
+    } catch (err) {
+      console.error('Error fetching results:', err);
+    } finally {
+      setLoadingResults(false);
+    }
+  };
+
   const currentProfileImage = user?.profile_image;
 
   return (
-    <div className="max-w-2xl mx-auto p-4 md:p-6">
+    <div className="max-w-4xl mx-auto p-4 md:p-6 space-y-6">
       {/* Header */}
-      <div className="mb-6">
+      <div>
         <h1 className="text-2xl font-bold text-gray-900">My Profile</h1>
-        <p className="text-gray-500 text-sm mt-1">Manage your personal information and profile photo</p>
+        <p className="text-gray-500 text-sm mt-1">Manage your personal information and view academic performance</p>
       </div>
 
-      {/* ID Card */}
-      <div className="bg-white rounded-2xl shadow-lg overflow-hidden transition-all duration-300 hover:shadow-xl">
-        {/* Header with gradient color */}
-        <div className={`${cfg.color} h-28 relative`}>
-          {/* Profile Image Container */}
-          <div className="absolute -bottom-12 left-6 z-10">
-            <div className="relative">
-              <div className="w-24 h-24 bg-white rounded-full border-4 border-white shadow-md overflow-hidden">
-                {preview ? (
-                  <img src={preview} alt="Preview" className="w-full h-full object-cover" />
-                ) : currentProfileImage ? (
-                  <img src={currentProfileImage} alt="Profile" className="w-full h-full object-cover" />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center bg-gray-100">
-                    <cfg.icon className="text-4xl text-gray-400" />
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* ID Card - Left Column */}
+        <div className="lg:col-span-1">
+          <div className="bg-white rounded-2xl shadow-lg overflow-hidden transition-all duration-300 hover:shadow-xl sticky top-6">
+            {/* Header with gradient color */}
+            <div className={`${cfg.color} h-24 relative`}>
+              {/* Profile Image Container */}
+              <div className="absolute -bottom-10 left-6 z-10">
+                <div className="relative">
+                  <div className="w-20 h-24 bg-white rounded-lg border-4 border-white shadow-md overflow-hidden">
+                    {preview ? (
+                      <img src={preview} alt="Preview" className="w-full h-full object-cover" />
+                    ) : currentProfileImage ? (
+                      <img src={currentProfileImage} alt="Profile" className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center bg-gray-100">
+                        <cfg.icon className="text-4xl text-gray-400" />
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* Edit Button */}
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="absolute -right-2 -bottom-2 w-8 h-8 bg-white border border-gray-200 rounded-full shadow-md flex items-center justify-center text-xs text-gray-700 hover:bg-gray-50 hover:shadow-lg transition-all duration-200 focus:outline-none"
+                    title="Change profile photo"
+                  >
+                    <FaPencilAlt className="text-xs" />
+                  </button>
+                </div>
+              </div>
+            </div>
+            
+            {/* Body Section */}
+            <div className="pt-12 px-6 pb-6">
+              <div className="mb-4">
+                <h2 className="text-lg font-bold text-gray-900">{user?.first_name} {user?.last_name}</h2>
+                <p className="text-xs text-gray-500">{cfg.label}</p>
+              </div>
+              
+              <div className="space-y-3">
+                <div className="flex items-center gap-3 p-2 bg-gray-50 rounded-lg">
+                  <FaIdCard className="text-primary-600 text-sm" />
+                  <div>
+                    <p className="text-[10px] text-gray-500 uppercase">ID</p>
+                    <p className="font-medium text-xs text-gray-900">{cfg.id || '—'}</p>
+                  </div>
+                </div>
+                {user?.email && (
+                  <div className="flex items-center gap-3 p-2 bg-gray-50 rounded-lg">
+                    <FaEnvelope className="text-primary-600 text-sm" />
+                    <div className="min-w-0">
+                      <p className="text-[10px] text-gray-500 uppercase">Email</p>
+                      <p className="font-medium text-xs text-gray-900 truncate">{user.email}</p>
+                    </div>
                   </div>
                 )}
               </div>
-              
-              {/* Edit Button */}
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="absolute -right-1 -bottom-1 w-8 h-8 bg-white border border-gray-200 rounded-full shadow-md flex items-center justify-center text-xs text-gray-700 hover:bg-gray-50 hover:shadow-lg transition-all duration-200 focus:outline-none"
-                title="Change profile photo"
-              >
-                <FaPencilAlt className="text-xs" />
-              </button>
+
+              <div className="mt-6 flex flex-col gap-2">
+                <button
+                  onClick={handleUpload}
+                  disabled={uploading || !selectedFile}
+                  className="w-full py-2 bg-primary-600 text-white rounded-lg text-xs font-medium hover:bg-primary-700 disabled:bg-gray-300 transition-colors"
+                >
+                  {uploading ? 'Uploading...' : 'Update Photo'}
+                </button>
+                {currentProfileImage && (
+                  <button
+                    onClick={handleRemove}
+                    disabled={uploading}
+                    className="w-full py-2 bg-red-50 text-red-600 rounded-lg text-xs font-medium hover:bg-red-100 transition-colors"
+                  >
+                    Remove Photo
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
-          
-          {/* Right side text on header */}
-          <div className="absolute top-4 right-6 text-white text-right">
-            <p className="text-xs opacity-80 uppercase tracking-wider">School ERP</p>
-            <p className="text-sm font-bold">{cfg.label} ID Card</p>
           </div>
         </div>
-        
-        {/* Body Section */}
-        <div className="pt-14 px-6 pb-6">
-          {/* User Name and Role */}
-          <div className="mb-6">
-            <h2 className="text-xl font-bold text-gray-900">{user?.first_name} {user?.last_name}</h2>
-            <p className="text-sm text-gray-500">{cfg.label}</p>
-          </div>
-          
-          {/* Action Buttons */}
-          <div className="flex flex-wrap items-center gap-3 mb-6 pb-4 border-b border-gray-100">
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className="inline-flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200 transition-colors duration-200"
-            >
-              <FaUpload className="text-xs" />
-              Choose Image
-            </button>
-            <button
-              onClick={handleUpload}
-              disabled={uploading || !selectedFile}
-              className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                uploading || !selectedFile
-                  ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                  : 'bg-primary-600 text-white hover:bg-primary-700 shadow-sm'
-              }`}
-            >
-              {uploading ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                  Uploading...
-                </>
-              ) : (
-                <>
-                  <FaUpload className="text-xs" />
-                  Upload
-                </>
+
+        {/* Details & Results - Right Column */}
+        <div className="lg:col-span-2 space-y-6">
+          {/* Info Grid */}
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+            <h3 className="text-sm font-bold text-gray-900 mb-4 flex items-center gap-2">
+              <FaSchool className="text-primary-600" /> Academic Details
+            </h3>
+            <div className="grid grid-cols-2 gap-4">
+              {user?.class_code && (
+                <div className="p-3 bg-gray-50 rounded-xl">
+                  <p className="text-[10px] text-gray-500 uppercase font-bold">Class</p>
+                  <p className="text-sm font-semibold text-gray-900">{user.class_code}</p>
+                </div>
               )}
-            </button>
-            <button
-              onClick={handleRemove}
-              disabled={uploading || !currentProfileImage}
-              className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                uploading || !currentProfileImage
-                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
-                  : 'bg-red-50 text-red-600 hover:bg-red-100'
-              }`}
-            >
-              <FaTrashAlt className="text-xs" />
-              Remove
-            </button>
-          </div>
-          
-          {/* Information Grid - 2 columns as requested */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {/* ID Card */}
-            <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors duration-200">
-              <div className="w-8 h-8 flex items-center justify-center bg-primary-100 rounded-full">
-                <FaIdCard className="text-primary-600 text-sm" />
-              </div>
-              <div>
-                <p className="text-xs text-gray-500 uppercase tracking-wide">ID</p>
-                <p className="font-medium text-sm text-gray-900">{cfg.id || '—'}</p>
-              </div>
+              {user?.std && (
+                <div className="p-3 bg-gray-50 rounded-xl">
+                  <p className="text-[10px] text-gray-500 uppercase font-bold">Standard</p>
+                  <p className="text-sm font-semibold text-gray-900">{user.std}</p>
+                </div>
+              )}
+              {user?.medium && (
+                <div className="p-3 bg-gray-50 rounded-xl">
+                  <p className="text-[10px] text-gray-500 uppercase font-bold">Medium</p>
+                  <p className="text-sm font-semibold text-gray-900">{user.medium}</p>
+                </div>
+              )}
+              {role === 'teacher' && user?.experience != null && (
+                <div className="p-3 bg-gray-50 rounded-xl">
+                  <p className="text-[10px] text-gray-500 uppercase font-bold">Experience</p>
+                  <p className="text-sm font-semibold text-gray-900">{user.experience} years</p>
+                </div>
+              )}
             </div>
-            
-            {/* Email */}
-            {user?.email && (
-              <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors duration-200">
-                <div className="w-8 h-8 flex items-center justify-center bg-primary-100 rounded-full">
-                  <FaEnvelope className="text-primary-600 text-sm" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-xs text-gray-500 uppercase tracking-wide">Email</p>
-                  <p className="font-medium text-sm text-gray-900 truncate">{user.email}</p>
-                </div>
-              </div>
-            )}
-            
-            {/* Phone */}
-            {(user?.phone || user?.phone1) && (
-              <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors duration-200">
-                <div className="w-8 h-8 flex items-center justify-center bg-primary-100 rounded-full">
-                  <FaPhone className="text-primary-600 text-sm" />
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500 uppercase tracking-wide">Phone</p>
-                  <p className="font-medium text-sm text-gray-900">{user.phone || user.phone1}</p>
-                </div>
-              </div>
-            )}
-            
-            {/* Class Code */}
-            {user?.class_code && (
-              <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors duration-200">
-                <div className="w-8 h-8 flex items-center justify-center bg-primary-100 rounded-full">
-                  <FaSchool className="text-primary-600 text-sm" />
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500 uppercase tracking-wide">Class</p>
-                  <p className="font-medium text-sm text-gray-900">{user.class_code}</p>
-                </div>
-              </div>
-            )}
-            
-            {/* Standard */}
-            {user?.std && (
-              <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors duration-200">
-                <div className="w-8 h-8 flex items-center justify-center bg-primary-100 rounded-full">
-                  <FaSchool className="text-primary-600 text-sm" />
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500 uppercase tracking-wide">Standard</p>
-                  <p className="font-medium text-sm text-gray-900">{user.std}</p>
-                </div>
-              </div>
-            )}
-            
-            {/* Experience */}
-            {role === 'teacher' && user?.experience != null && (
-              <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors duration-200">
-                <div className="w-8 h-8 flex items-center justify-center bg-primary-100 rounded-full">
-                  <FaChalkboardTeacher className="text-primary-600 text-sm" />
-                </div>
-                <div>
-                  <p className="text-xs text-gray-500 uppercase tracking-wide">Experience</p>
-                  <p className="font-medium text-sm text-gray-900">{user.experience} years</p>
-                </div>
-              </div>
-            )}
           </div>
-          
-          {/* About Section */}
-          {user?.about && (
-            <div className="mt-4 p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors duration-200">
-              <p className="text-xs text-gray-500 uppercase tracking-wide mb-2">About</p>
-              <p className="text-sm text-gray-700 leading-relaxed">{user.about}</p>
+
+          {/* Exam Results for Students */}
+          {role === 'student' && (
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2">
+                  <FaUserGraduate className="text-primary-600" /> Exam Results
+                </h3>
+                <span className="text-[10px] text-gray-400">Showing recent exams</span>
+              </div>
+
+              {loadingResults ? (
+                <div className="flex justify-center py-8"><Spinner /></div>
+              ) : examResults.length === 0 ? (
+                <p className="text-center py-8 text-gray-400 text-sm bg-gray-50 rounded-xl border border-dashed">No exam results found yet.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="text-left text-gray-500 border-b border-gray-100">
+                        <th className="pb-2 font-semibold">Exam/Subject</th>
+                        <th className="pb-2 font-semibold text-center">Marks</th>
+                        <th className="pb-2 font-semibold text-center">Cut Marks</th>
+                        <th className="pb-2 font-semibold text-right">Result</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {examResults.map((res) => {
+                        const marks = res.marks_obtained;
+                        const total = res.total_marks;
+                        const cut = (total - marks).toFixed(1);
+                        const isPass = marks >= (res.exam_id?.passing_marks || (total * 0.35));
+                        
+                        return (
+                          <tr key={res._id} className="hover:bg-gray-50 transition-colors">
+                            <td className="py-3">
+                              <p className="font-bold text-gray-900">{res.exam_id?.exam_name || 'Exam'}</p>
+                              <p className="text-[10px] text-gray-500">{res.subject_code}</p>
+                            </td>
+                            <td className="py-3 text-center">
+                              <span className="font-bold text-gray-900">{marks}</span>
+                              <span className="text-gray-400">/{total}</span>
+                            </td>
+                            <td className="py-3 text-center">
+                              <span className="text-red-500 font-medium">-{cut}</span>
+                            </td>
+                            <td className="py-3 text-right">
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                isPass ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                              }`}>
+                                {isPass ? 'PASS' : 'FAIL'}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           )}
         </div>
-        
-        {/* Bottom accent bar */}
-        <div className={`${cfg.color} h-1`}></div>
       </div>
       
       {/* Hidden file input */}

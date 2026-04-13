@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FaCalendarCheck, FaUsers, FaClipboardList, FaChalkboardTeacher } from 'react-icons/fa';
+import { FaCalendarCheck, FaUsers, FaClipboardList, FaChalkboardTeacher, FaFileAlt } from 'react-icons/fa';
 import { dashboardAPI } from '../../services/api';
 import StatCard from '../../components/StatCard';
 import Badge from '../../components/Badge';
@@ -29,7 +29,13 @@ const TeacherDashboard: React.FC = () => {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
         <StatCard title="My Classes" value={data?.myClasses?.length || 0} icon={FaChalkboardTeacher} color="blue" />
         <StatCard title="Total Students" value={data?.totalStudentsInClasses || 0} icon={FaUsers} color="green" />
-        <StatCard title="Attendance Pending" value={data?.attendancePending || 0} icon={FaCalendarCheck} color="orange" subtitle="classes today" />
+        <StatCard 
+          title="Student Leaves" 
+          value={data?.pendingStudentLeaves || 0} 
+          icon={FaFileAlt} 
+          color={data?.pendingStudentLeaves > 0 ? "orange" : "blue"} 
+          subtitle="pending approval" 
+        />
         <StatCard title="Homework Given" value={data?.homeworkGiven || 0} icon={FaClipboardList} color="purple" />
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">

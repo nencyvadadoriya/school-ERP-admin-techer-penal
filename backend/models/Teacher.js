@@ -58,6 +58,19 @@ const teacherSchema = new mongoose.Schema({
     type: [String],
     default: [],
   },
+  subject_assignments: [{
+    subject_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Subject',
+    },
+    subject_name: String,
+    class_id: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Class',
+    },
+    class_name: String,
+    medium: String,
+  }],
   is_delete: {
     type: Boolean,
     default: false,

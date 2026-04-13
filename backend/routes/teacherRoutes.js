@@ -7,6 +7,7 @@ const {
   getTeacherById,
   updateTeacher,
   deleteTeacher,
+  assignSubjects,
 } = require('../controllers/teacherController');
 const { auth, adminAuth } = require('../middleware/auth');
 const upload = require('../middleware/upload');
@@ -16,6 +17,7 @@ router.post('/login', loginTeacher);
 
 // Admin only routes
 router.post('/register', auth, adminAuth, upload.single('profile_image'), registerTeacher);
+router.post('/:id/assign-subjects', auth, adminAuth, assignSubjects);
 router.delete('/:id', auth, adminAuth, deleteTeacher);
 
 // Protected routes

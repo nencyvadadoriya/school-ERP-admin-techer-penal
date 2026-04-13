@@ -271,6 +271,7 @@ const updateTeacher = async (req, res) => {
       medium,
       assigned_class,
       subjects,
+      subject_assignments,
       is_active,
     } = req.body;
 
@@ -296,21 +297,30 @@ const updateTeacher = async (req, res) => {
     const subjectsArray = subjects ? parseArrayInput(subjects) : teacher.subjects;
 
     // Update teacher
-    teacher.first_name = first_name;
-    teacher.last_name = last_name;
-    teacher.phone = phone;
-    teacher.pin = pin;
+    if (first_name) teacher.first_name = first_name;
+    if (last_name) teacher.last_name = last_name;
+    if (phone) teacher.phone = phone;
+    if (pin) teacher.pin = pin;
     teacher.profile_image = profileImageUrl;
     if (typeof experience !== 'undefined') {
       teacher.experience = Number(experience);
     }
-    teacher.about = about;
+    if (about) teacher.about = about;
     if (typeof medium !== 'undefined') {
       teacher.medium = medium;
     }
     teacher.assigned_class = assignedClassArray;
     teacher.subjects = subjectsArray;
-    teacher.is_active = is_active;
+    if (typeof is_active !== 'undefined') {
+      teacher.is_active = is_active;
+    }
+
+    // Update subject assignments if provided
+    if (subject_assignments) {
+      teacher.subject_assignments = Array.isArray(subject_assignments) 
+        ? subject_assignments 
+        : JSON.parse(subject_assignments);
+    }
 
     await teacher.save();
 
@@ -377,6 +387,39 @@ const deleteTeacher = async (req, res) => {
     });
   }
 };
+// Assign Subjects to Teacher
+const assignSubjects = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { subject_assignments } = req.body;
+
+    const teacher = await Teacher.findOne({ _id: id, is_delete: false });
+
+    if (!teacher) {
+      return res.status(404).json({
+        success: false,
+        message: 'Teacher not found',
+      });
+    }
+
+    teacher.subject_assignments = subject_assignments;
+    await teacher.save();
+
+    res.json({
+      success: true,
+      message: 'Subjects assigned successfully',
+      data: teacher,
+    });
+  } catch (error) {
+    console.error('Error in assignSubjects:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error assigning subjects',
+      error: error.message,
+    });
+  }
+};
+
 
 module.exports = {
   registerTeacher,
@@ -385,4 +428,6 @@ module.exports = {
   getTeacherById,
   updateTeacher,
   deleteTeacher,
+  assignSubjects,
 };
+

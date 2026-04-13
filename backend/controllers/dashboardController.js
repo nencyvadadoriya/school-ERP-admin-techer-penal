@@ -54,11 +54,20 @@ const getTeacherDashboard = async (req, res) => {
     const teacher = await Teacher.findOne({ teacher_code, is_delete: false }).lean();
     console.log('Teacher found for dashboard:', { teacher_code, hasTeacher: !!teacher, assigned: teacher?.assigned_class });
     const assignedClassCodes = Array.isArray(teacher?.assigned_class) ? teacher.assigned_class.filter(Boolean) : [];
+    const subjectAssignments = Array.isArray(teacher?.subject_assignments) ? teacher.subject_assignments : [];
+    
+    // Extract class_codes from subject assignments too
+    const subjectAssignedClassCodes = [];
+    const classIdsFromSA = subjectAssignments.map(sa => sa.class_id).filter(Boolean);
+    if (classIdsFromSA.length > 0) {
+      const clsFromSA = await Class.find({ _id: { $in: classIdsFromSA }, is_delete: false }).select('class_code').lean();
+      clsFromSA.forEach(c => { if(c.class_code) subjectAssignedClassCodes.push(c.class_code); });
+    }
 
     const myClassesDocs = await Class.find({
       $or: [
         { teacher_code, is_delete: false },
-        { class_code: { $in: assignedClassCodes }, is_delete: false }
+        { class_code: { $in: [...assignedClassCodes, ...subjectAssignedClassCodes] }, is_delete: false }
       ]
     }).lean();
 
@@ -95,7 +104,7 @@ const getTeacherDashboard = async (req, res) => {
         .flatMap((cc) => [cc, withHyphen(cc), withoutHyphen(cc)])
     )];
 
-    const [upcomingExams, upcomingExamsNext2Days, homeworkGiven, myLeaves] = await Promise.all([
+    const [upcomingExams, upcomingExamsNext2Days, homeworkGiven, myLeaves, pendingStudentLeaves] = await Promise.all([
       Exam.find({ 
         class_code: { $in: classCodes },
         exam_date: { $gte: today },
@@ -108,6 +117,7 @@ const getTeacherDashboard = async (req, res) => {
       }).limit(10).sort({ exam_date: 1 }),
       Homework.countDocuments({ teacher_code, is_delete: false }),
       TeacherLeave.find({ teacher_code, is_delete: false }).sort({ createdAt: -1 }).limit(5),
+      StudentLeave.countDocuments({ class_code: { $in: classCodes }, status: 'Pending', is_delete: false }),
     ]);
 
     // Count students in any of the teacher's classes.
@@ -165,12 +175,14 @@ const getTeacherDashboard = async (req, res) => {
       success: true,
       data: { 
         myClasses, 
+        subjectAssignments,
         totalStudentsInClasses: totalStudentsInClassesFinal, 
         attendancePending, 
         homeworkGiven, 
         upcomingExams,
         upcomingExamsNext2Days,
-        myLeaves 
+        myLeaves,
+        pendingStudentLeaves
       }
     });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }

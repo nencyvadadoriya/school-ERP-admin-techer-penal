@@ -47,6 +47,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggleSidebar }) => {
     { path: '/admin/dashboard', icon: FaTachometerAlt, label: 'Dashboard', section: 'main' },
     { path: '/admin/students', icon: FaUserGraduate, label: 'Students', section: 'management' },
     { path: '/admin/teachers', icon: FaChalkboardTeacher, label: 'Teachers', section: 'management' },
+    { path: '/admin/subject-assignment', icon: FaBook, label: 'Subject Assignment', section: 'management' },
     { path: '/admin/assign-class-teacher', icon: FaChalkboardTeacher, label: 'Assign Class Teacher', section: 'management' },
     { path: '/admin/classes', icon: FaSchool, label: 'Classes', section: 'management' },
     { path: '/admin/subjects', icon: FaBook, label: 'Subjects', section: 'management' },

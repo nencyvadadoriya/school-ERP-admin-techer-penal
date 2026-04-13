@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { FaPlus, FaEdit, FaTrash } from 'react-icons/fa';
 import { toast } from 'react-toastify';
-import { homeworkAPI, classAPI, subjectAPI } from '../../services/api';
+import { homeworkAPI, classAPI, subjectAPI, dashboardAPI } from '../../services/api';
 import Modal from '../../components/Modal';
 import Spinner from '../../components/Spinner';
 import { useAuth } from '../../context/AuthContext';
@@ -13,6 +13,7 @@ const TeacherHomework: React.FC = () => {
   const [items, setItems] = useState<any[]>([]);
   const [classes, setClasses] = useState<any[]>([]);
   const [subjects, setSubjects] = useState<any[]>([]);
+  const [subjectAssignments, setSubjectAssignments] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [modal, setModal] = useState<boolean>(false);
   const [editing, setEditing] = useState<any | null>(null);
@@ -21,16 +22,96 @@ const TeacherHomework: React.FC = () => {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [hwRes, classRes, subRes] = await Promise.all([
+      const [hwRes, dRes, subRes, allClsRes] = await Promise.all([
         homeworkAPI.getAll({ teacher_code: user?.teacher_code }),
-        classAPI.getAll(),
-        subjectAPI.getAll()
+        dashboardAPI.teacher(),
+        subjectAPI.getAll(),
+        classAPI.getAll()
       ]);
       setItems(hwRes.data.data || []);
-      setClasses(classRes.data.data || []);
+      const teacherData = dRes.data.data || {};
+      
+      // Filter classes to show ONLY what is assigned to the teacher
+      const allSystemClasses = allClsRes.data.data || [];
+      const subjectAssignments = teacherData.subjectAssignments || [];
+      
+      console.log('Teacher Debug:', { 
+        teacher_code: user?.teacher_code,
+        subjectAssignments,
+        allSystemClassesCount: allSystemClasses.length 
+      });
+
+      let filteredClasses = [];
+
+      // 1. Get classes where teacher is the class teacher or explicitly assigned
+      const teacherAssignedClassCodes = teacherData.assigned_class || [];
+      
+      if (allSystemClasses.length > 0) {
+        filteredClasses = allSystemClasses.filter((c: any) => {
+          // Match by teacher_code (if they are the class teacher)
+          const isClassTeacher = (c.teacher_code && user?.teacher_code && String(c.teacher_code) === String(user?.teacher_code));
+          if (isClassTeacher) return true;
+          
+          // Match by assigned_class codes
+          if (teacherAssignedClassCodes.includes(c.class_code)) return true;
+
+          // Match by subject assignments
+          return subjectAssignments.some((a: any) => {
+            const classIdMatch = a.class_id && c._id && String(a.class_id) === String(c._id);
+            const classNameMatch = a.class_name && c.class_code && String(a.class_name).includes(String(c.class_code));
+            
+            // Standard/Division matching
+            const cStd = String(c.standard || '').trim();
+            const cDiv = String(c.division || '').trim();
+            const aName = String(a.class_name || '').trim();
+            
+            const stdDivMatch = aName.includes(cStd) && aName.includes(cDiv);
+            
+            return classIdMatch || classNameMatch || stdDivMatch;
+          });
+        });
+      }
+
+      // 2. If filtered list is still empty, derive from subject assignments directly
+      if (filteredClasses.length === 0 && subjectAssignments.length > 0) {
+        console.warn('Deriving classes from assignments directly');
+        const derived = subjectAssignments.map((a: any) => {
+          const name = String(a.class_name || '');
+          const parts = name.split(/[\s-]+/);
+          return {
+            _id: a.class_id || `temp-${name}`,
+            class_code: name,
+            standard: parts.find(p => !isNaN(parseInt(p))) || name,
+            division: parts.find(p => p.length === 1 && /[A-Z]/i.test(p)) || '',
+            medium: a.medium || 'English'
+          };
+        });
+        filteredClasses = Array.from(new Map(derived.map(c => [c.class_code, c])).values());
+      }
+
+      // 3. Last Resort: Use teacher's direct assigned_class strings
+      if (filteredClasses.length === 0 && teacherAssignedClassCodes.length > 0) {
+        filteredClasses = teacherAssignedClassCodes.map((code: string) => ({
+          _id: `code-${code}`,
+          class_code: code,
+          standard: code.split('-')[0] || code,
+          division: code.split('-')[1] || '',
+          medium: 'N/A'
+        }));
+      }
+
+      // 4. FINAL Fallback: All myClasses from dashboard
+      if (filteredClasses.length === 0 && teacherData.myClasses?.length > 0) {
+        filteredClasses = teacherData.myClasses;
+      }
+
+      console.log('Final Filtered Classes for Dropdown:', filteredClasses);
+
+      setClasses(filteredClasses);
+      setSubjectAssignments(subjectAssignments);
       setSubjects(subRes.data.data || []);
     } catch (e) {
-      console.error(e);
+      console.error('Fetch Error:', e);
     } finally {
       setLoading(false);
     }
@@ -48,6 +129,50 @@ const TeacherHomework: React.FC = () => {
       else { await homeworkAPI.create(payload); toast.success('Homework assigned'); }
       setModal(false); fetchData();
     } catch(err) { toast.error(err.response?.data?.message||'Error'); }
+  };
+
+  const getFilteredSubjects = () => {
+    if (!form.class_code) return [];
+    
+    // Find the class from the teacher's classes list
+    const selectedClass = classes.find(c => 
+      c.class_code === form.class_code || String(c.standard) === String(form.class_code)
+    );
+    
+    if (!selectedClass) return [];
+
+    // Filter subjects based on admin assignments for THIS specific teacher
+    // subjectAssignments comes from teacherData.subjectAssignments in fetchData()
+    const assignedForThisClass = subjectAssignments.filter(a => {
+      // Match by class_id if both exist
+      if (a.class_id && selectedClass._id && String(a.class_id) === String(selectedClass._id)) {
+        return true;
+      }
+      // Match by class_name/standard if IDs don't match or aren't available
+      if (a.class_name && selectedClass.class_code && String(a.class_name).includes(selectedClass.class_code)) {
+        return true;
+      }
+      // Match by standard name (e.g., "Std 1 - Div A")
+      const standardStr = `${selectedClass.standard} - ${selectedClass.division}`;
+      if (a.class_name && a.class_name.includes(standardStr)) {
+        return true;
+      }
+      return false;
+    });
+
+    if (assignedForThisClass.length > 0) {
+      return assignedForThisClass.map(a => ({
+        _id: a.subject_id,
+        subject_name: a.subject_name,
+        subject_code: a.subject_id
+      }));
+    }
+
+    // Fallback: If no specific assignments found, show subjects for this standard/medium
+    return subjects.filter(s => 
+      String(s.std) === String(selectedClass.standard) && 
+      s.medium === selectedClass.medium
+    );
   };
 
   if (loading) return <Spinner />;
@@ -90,11 +215,17 @@ const TeacherHomework: React.FC = () => {
                 className="input-field"
                 required
                 value={form.class_code}
-                onChange={e => setForm({ ...form, class_code: e.target.value })}
+                onChange={e => {
+                  console.log('Selected class code:', e.target.value);
+                  setForm({ ...form, class_code: e.target.value });
+                }}
               >
                 <option value="">Select Standard</option>
+                {classes.length === 0 && <option disabled>No classes assigned</option>}
                 {classes.map(c => (
-                  <option key={c._id} value={c.standard}>{c.standard} {c.division} ({c.medium})</option>
+                  <option key={c._id || c.class_code} value={c.class_code || c.standard}>
+                    {c.standard || c.class_code} {c.division || ''} ({c.medium || 'N/A'})
+                  </option>
                 ))}
               </select>
             </div>
@@ -105,10 +236,11 @@ const TeacherHomework: React.FC = () => {
                 required
                 value={form.subject_code}
                 onChange={e => setForm({ ...form, subject_code: e.target.value })}
+                disabled={!form.class_code}
               >
                 <option value="">Select Subject</option>
-                {subjects.filter(s => !form.class_code || s.std === form.class_code).map(s => (
-                  <option key={s._id} value={s.subject_name}>{s.subject_name}</option>
+                {getFilteredSubjects().map((s, idx) => (
+                  <option key={s._id || idx} value={s.subject_name}>{s.subject_name}</option>
                 ))}
               </select>
             </div>

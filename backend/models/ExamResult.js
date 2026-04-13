@@ -7,6 +7,7 @@ const examResultSchema = new mongoose.Schema({
   class_code: { type: String },
   subject_code: { type: String },
   marks_obtained: { type: Number, required: true },
+  revised_marks: { type: Number, default: null },
   total_marks: { type: Number, required: true },
   grade: { type: String },
   remarks: { type: String },

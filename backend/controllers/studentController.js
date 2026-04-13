@@ -324,38 +324,59 @@ const getAllStudents = async (req, res) => {
     if (role === 'teacher') {
       const teacherId = req.user?.id;
       const teacher = teacherId
-        ? await Teacher.findOne({ _id: teacherId, is_delete: false }).select('assigned_class').lean()
+        ? await Teacher.findOne({ _id: teacherId, is_delete: false }).select('assigned_class subject_assignments').lean()
         : null;
       const assigned = Array.isArray(teacher?.assigned_class) ? teacher.assigned_class.filter(Boolean) : [];
 
-      if (assigned.length === 0) {
+      // Also include classes where the teacher is the Class Teacher
+      const classTeacherDocs = await Class.find({ teacher_code: req.user?.teacher_code, is_delete: false }).select('class_code').lean();
+      const classTeacherCodes = (classTeacherDocs || []).map(c => c.class_code).filter(Boolean);
+
+      // Also allow classes that are mapped via subject_assignments (subject teacher).
+      let subjectAssignedClassCodes = [];
+      const sa = Array.isArray(teacher?.subject_assignments) ? teacher.subject_assignments : [];
+      const classIds = sa.map((x) => x?.class_id).filter(Boolean);
+      if (classIds.length > 0) {
+        const clsDocs = await Class.find({ _id: { $in: classIds }, is_delete: false })
+          .select('class_code')
+          .lean();
+        subjectAssignedClassCodes = (clsDocs || []).map((c) => c?.class_code).filter(Boolean);
+      }
+
+      const allowedClasses = Array.from(new Set([...assigned, ...classTeacherCodes, ...subjectAssignedClassCodes]));
+
+      if (allowedClasses.length === 0) {
         console.log('Teacher has no assigned classes');
         return res.json({ success: true, count: 0, data: [] });
       }
 
       const normalize = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-      const assignedNormalized = assigned.map(normalize);
+      const assignedNormalized = allowedClasses.map(normalize);
 
       // Only allow teacher to query within their own assigned classes
       if (class_code) {
         const requested = String(class_code);
         const requestedNormalized = normalize(requested);
         
-      const isAuthorized = assignedNormalized.includes(requestedNormalized) || assigned.includes(requested) || assigned.some(a => {
+        const isAuthorized = assignedNormalized.includes(requestedNormalized) || 
+          allowedClasses.includes(requested) || 
+          allowedClasses.some(a => {
             const normalizedA = normalize(a);
             if (normalizedA.includes(requestedNormalized) || requestedNormalized.includes(normalizedA)) return true;
             
-            const parts = requested.split('-');
-            if (parts.length >= 3) {
-              const std = parts[1];
-              const div = parts[2];
-              return a.includes(`${std}-${div}`) || a.includes(`${std}${div}`);
+            // Extract components and compare
+            const aMatch = a.match(/(\d+)/);
+            const rMatch = requested.match(/(\d+)/);
+            if (aMatch && rMatch && aMatch[1] === rMatch[1]) {
+              const aDivMatch = a.match(/Div\s*([A-D])/i) || a.match(/-([A-D])\b/i) || a.match(/\s+([A-D])\s+/i);
+              const rDivMatch = requested.match(/Div\s*([A-D])/i) || requested.match(/-([A-D])\b/i) || requested.match(/\s+([A-D])\s+/i);
+              if (aDivMatch && rDivMatch && aDivMatch[1].toUpperCase() === rDivMatch[1].toUpperCase()) return true;
             }
             return false;
-        });
+          });
 
         if (!isAuthorized) {
-          console.log(`Teacher not authorized for class ${requested}. Assigned:`, assigned);
+          console.log(`Teacher not authorized for class ${requested}. Allowed:`, allowedClasses);
           return res.json({ success: true, count: 0, data: [] });
         }
         
@@ -364,26 +385,29 @@ const getAllStudents = async (req, res) => {
         
         let requestedStd = '';
         let requestedDiv = '';
-        const parts = requested.split('-');
-        if (parts.length >= 3) {
-          requestedStd = String(parts[1]); // "1"
-          requestedDiv = String(parts[2]); // "A"
-        }
+        
+        const stdMatch = requested.match(/(\d+)/);
+        if (stdMatch) requestedStd = stdMatch[1];
+        
+        const divMatch = requested.match(/Div\s*([A-D])/i) || requested.match(/-([A-D])\b/i) || requested.match(/\s+([A-D])\s+/i) || requested.match(/\s+([A-D])$/i);
+        if (divMatch) requestedDiv = divMatch[1];
 
         const students = allStudents.filter(s => {
           const sc = normalize(s.class_code);
+          const rc = normalize(requested);
           // 1. Exact or normalized match
-          if (sc === requestedNormalized || s.class_code === requested) return true;
+          if (sc === rc || s.class_code === requested) return true;
 
           // 2. Component matching (Standard & Division)
-          const sStd = String(s.std || s.standard || '');
-          const sDiv = String(s.division || '');
-          if (requestedStd && requestedDiv) {
-            if (sStd === requestedStd && sDiv === requestedDiv) return true;
-          }
+          const sStd = normalize(String(s.std || s.standard || ''));
+          const sDiv = normalize(String(s.class_name || s.division || ''));
+          const rStd = normalize(requestedStd);
+          const rDiv = normalize(requestedDiv);
+          
+          if (rStd && rDiv && sStd === rStd && sDiv === rDiv) return true;
 
           // 3. Fallback: Substring matching
-          if (sc && requestedNormalized && (sc.includes(requestedNormalized) || requestedNormalized.includes(sc))) return true;
+          if (sc && rc && (sc.includes(rc) || rc.includes(sc))) return true;
 
           return false;
         });
@@ -394,7 +418,7 @@ const getAllStudents = async (req, res) => {
           data: students,
         });
       } else {
-        filter.class_code = { $in: assigned };
+        filter.class_code = { $in: allowedClasses };
       }
     } else {
       // default/admin behavior
