@@ -1,24 +1,37 @@
 import React, { useState, useEffect } from 'react';
 import { FaPlus, FaTrash, FaEdit } from 'react-icons/fa';
 import { toast } from 'react-toastify';
-import { classAPI, subjectAPI, teacherAPI, timetableAPI } from '../../services/api';
+import { classAPI, shiftBreakTimeAPI, subjectAPI, teacherAPI, timetableAPI } from '../../services/api';
 import Modal from '../../components/Modal';
 import Spinner from '../../components/Spinner';
 
-const EMPTY = { class_code: '', day: 'Monday', periods: [] as number[], subject: '', teacher_code: '' };
+const EMPTY = {
+  class_code: '',
+  day: 'Monday',
+  period_number: 1,
+  start_time: '',
+  end_time: '',
+  subject: '',
+  teacher_code: '',
+};
 
-// Define time slots - 6 lectures of 45 minutes each
-// 3 lectures before break, 3 after break
-const TIME_SLOTS = [
-  { period_number: 1, start_time: '07:00', end_time: '07:45', label: 'Period 1 (07:00 - 07:45)' },
-  { period_number: 2, start_time: '07:45', end_time: '08:30', label: 'Period 2 (07:45 - 08:30)' },
-  { period_number: 3, start_time: '08:30', end_time: '09:15', label: 'Period 3 (08:30 - 09:15)' },
-  { period_number: 4, start_time: '09:45', end_time: '10:30', label: 'Period 4 (09:45 - 10:30)' },
-  { period_number: 5, start_time: '10:30', end_time: '11:15', label: 'Period 5 (10:30 - 11:15)' },
-  { period_number: 6, start_time: '11:15', end_time: '12:00', label: 'Period 6 (11:15 - 12:00)' },
-];
+const DAY_TIMING_EMPTY = {
+  class_code: '',
+  day: 'Monday',
+  day_start_time: '',
+  day_end_time: '',
+  break_start_time: '',
+  break_end_time: '',
+};
 
-const BREAK_SLOT = { start_time: '09:15', end_time: '09:45', label: 'Break' };
+const toTimeStr = (s: any) => (s === undefined || s === null ? '' : String(s));
+
+const timeToMinutes = (t: any) => {
+  const s = toTimeStr(t);
+  const m = /^([0-1]\d|2[0-3]):([0-5]\d)$/.exec(s);
+  if (!m) return null;
+  return Number(m[1]) * 60 + Number(m[2]);
+};
 
 const Timetable: React.FC = () => {
   const [items, setItems] = useState<any[]>([]);
@@ -27,6 +40,18 @@ const Timetable: React.FC = () => {
   const [modalOpen, setModalOpen] = useState<boolean>(false);
   const [editing, setEditing] = useState<any | null>(null);
   const [form, setForm] = useState(EMPTY);
+
+  const [timingModalOpen, setTimingModalOpen] = useState<boolean>(false);
+  const [timingForm, setTimingForm] = useState(DAY_TIMING_EMPTY);
+
+  const [shiftBreakModalOpen, setShiftBreakModalOpen] = useState<boolean>(false);
+  const [shiftBreakLoading, setShiftBreakLoading] = useState<boolean>(false);
+  const [shiftBreakTimes, setShiftBreakTimes] = useState<any[]>([]);
+  const [shiftBreakForm, setShiftBreakForm] = useState({
+    shift: 'Morning',
+    break_start_time: '',
+    break_end_time: '',
+  });
 
   const handleSubjectChange = (subjectCode: string) => {
     const matchingTeachers = teachers.filter((t) => Array.isArray(t?.subjects) && t.subjects.includes(subjectCode));
@@ -37,17 +62,6 @@ const Timetable: React.FC = () => {
       subject: subjectCode,
       teacher_code: autoTeacherCode,
     }));
-  };
-
-  const togglePeriod = (pNum: number) => {
-    setForm(prev => {
-      const isSelected = prev.periods.includes(pNum);
-      if (isSelected) {
-        return { ...prev, periods: prev.periods.filter(p => p !== pNum) };
-      } else {
-        return { ...prev, periods: [...prev.periods, pNum] };
-      }
-    });
   };
 
   const [viewClassCode, setViewClassCode] = useState<string>('');
@@ -89,30 +103,54 @@ const Timetable: React.FC = () => {
     setEditing(null);
   };
 
+  const closeTimingModal = () => {
+    setTimingModalOpen(false);
+  };
+
+  const closeShiftBreakModal = () => {
+    setShiftBreakModalOpen(false);
+  };
+
   const buildTimetablePayloadFromForm = (ttId: any | undefined, f: any) => {
     const subject = subjects.find((s) => s.subject_code === f.subject);
     const teacher = teachers.find((t) => t.teacher_code === f.teacher_code);
-    
-    const selectedPeriods = f.periods.map((pNum: any) => {
-      const slot = TIME_SLOTS.find(slot => String(slot.period_number) === String(pNum));
-      return {
-        period_number: slot?.period_number || Number(pNum),
-        start_time: slot?.start_time || '',
-        end_time: slot?.end_time || '',
-        subject_code: subject?.subject_code || f.subject || undefined,
-        subject_name: subject?.subject_name,
-        teacher_code: teacher?.teacher_code || f.teacher_code || undefined,
-        teacher_name: teacher ? `${teacher.first_name} ${teacher.last_name}` : undefined,
-      };
-    });
-    
+
+    const shouldSendTimes = String(f.day) === 'Monday' || String(f.day) === 'Saturday';
+
     return {
       _id: ttId,
       class_code: f.class_code,
       schedule: [
         {
           day: f.day,
-          periods: selectedPeriods,
+          periods: [
+            {
+              period_number: Number(f.period_number),
+              start_time: shouldSendTimes ? toTimeStr(f.start_time) : undefined,
+              end_time: shouldSendTimes ? toTimeStr(f.end_time) : undefined,
+              subject_code: subject?.subject_code || f.subject || undefined,
+              subject_name: subject?.subject_name,
+              teacher_code: teacher?.teacher_code || f.teacher_code || undefined,
+              teacher_name: teacher ? `${teacher.first_name} ${teacher.last_name}` : undefined,
+            },
+          ],
+        },
+      ],
+    };
+  };
+
+  const buildDayTimingPayload = (ttId: any | undefined, f: any) => {
+    return {
+      _id: ttId,
+      class_code: f.class_code,
+      schedule: [
+        {
+          day: f.day,
+          day_start_time: toTimeStr(f.day_start_time),
+          day_end_time: toTimeStr(f.day_end_time),
+          break_start_time: toTimeStr(f.break_start_time),
+          break_end_time: toTimeStr(f.break_end_time),
+          periods: [],
         },
       ],
     };
@@ -163,9 +201,22 @@ const Timetable: React.FC = () => {
     }
   };
 
+  const fetchShiftBreakTimes = async () => {
+    setShiftBreakLoading(true);
+    try {
+      const r = await shiftBreakTimeAPI.getAll();
+      setShiftBreakTimes(r.data.data || []);
+    } catch (e: any) {
+      setShiftBreakTimes([]);
+    } finally {
+      setShiftBreakLoading(false);
+    }
+  };
+
   useEffect(() => {
     fetch();
     fetchMeta();
+    fetchShiftBreakTimes();
   }, []);
 
   useEffect(() => {
@@ -177,12 +228,27 @@ const Timetable: React.FC = () => {
   }, [metaLoading, classes]);
 
   const openAdd = () => { setEditing(null); setForm(EMPTY); setModalOpen(true); };
+  const openDayTiming = () => {
+    setTimingForm((prev) => ({ ...DAY_TIMING_EMPTY, class_code: viewClassCode || prev.class_code }));
+    setTimingModalOpen(true);
+  };
+  const openShiftBreak = () => {
+    const existing = shiftBreakTimes.find((x) => String(x.shift) === String(shiftBreakForm.shift));
+    setShiftBreakForm({
+      shift: shiftBreakForm.shift,
+      break_start_time: existing?.break_start_time || '',
+      break_end_time: existing?.break_end_time || '',
+    });
+    setShiftBreakModalOpen(true);
+  };
   const openEdit = (it: any) => {
     setEditing(it);
     setForm({
       class_code: it.class_code,
       day: it.day,
-      periods: [Number(it.period)],
+      period_number: Number(it.period),
+      start_time: toTimeStr(it.start_time),
+      end_time: toTimeStr(it.end_time),
       subject: it?.subject || '',
       teacher_code: it?.teacher_code || '',
     });
@@ -241,6 +307,20 @@ const Timetable: React.FC = () => {
   const handleSubmit = async (e: any) => {
     e.preventDefault();
     try {
+      const needsTimes = String(form.day) === 'Monday' || String(form.day) === 'Saturday';
+      if (needsTimes) {
+        const st = timeToMinutes(form.start_time);
+        const et = timeToMinutes(form.end_time);
+        if (st === null || et === null) {
+          toast.error('Please enter valid Start/End time');
+          return;
+        }
+        if (et <= st) {
+          toast.error('End Time must be greater than Start Time (use 24-hour time, e.g. 13:20)');
+          return;
+        }
+      }
+
       const payload: any = buildTimetablePayloadFromForm(editing?.timetable_id, form);
       if (editing) {
         payload.old_day = editing.day;
@@ -254,6 +334,38 @@ const Timetable: React.FC = () => {
         await fetchViewTimetable(viewClassCode);
       }
     } catch (err) { toast.error(err.response?.data?.message || 'Error'); }
+  };
+
+  const handleTimingSubmit = async (e: any) => {
+    e.preventDefault();
+    try {
+      const payload: any = buildDayTimingPayload(viewTimetable?._id, timingForm);
+      await timetableAPI.save(payload);
+      toast.success('Day timing saved');
+      closeTimingModal();
+      await fetch();
+      if (viewClassCode) {
+        await fetchViewTimetable(viewClassCode);
+      }
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Error');
+    }
+  };
+
+  const handleShiftBreakSubmit = async (e: any) => {
+    e.preventDefault();
+    try {
+      await shiftBreakTimeAPI.upsert({
+        shift: String(shiftBreakForm.shift),
+        break_start_time: toTimeStr(shiftBreakForm.break_start_time),
+        break_end_time: toTimeStr(shiftBreakForm.break_end_time),
+      });
+      toast.success('Shift break time saved');
+      closeShiftBreakModal();
+      await fetchShiftBreakTimes();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Error');
+    }
   };
 
   const handleDelete = async (it: any) => {
@@ -283,13 +395,103 @@ const Timetable: React.FC = () => {
     (Array.isArray(d?.periods) ? d.periods : []).forEach((p: any) => allPeriods.push({ day: d.day, ...p }));
   });
 
-  // Use predefined slots for display
-  const slots = TIME_SLOTS.map(slot => ({
-    key: `period-${slot.period_number}`,
-    start_time: slot.start_time,
-    end_time: slot.end_time,
-    period_number: slot.period_number,
-  }));
+  const getDaySchedule = (day: string) => viewSchedule.find((s: any) => String(s?.day) === String(day));
+
+  const getDayPeriodsSorted = (day: string) => {
+    const d = getDaySchedule(day);
+    const periods = Array.isArray(d?.periods) ? [...d.periods] : [];
+    periods.sort((a: any, b: any) => {
+      const sa = toTimeStr(a?.start_time);
+      const sb = toTimeStr(b?.start_time);
+      if (sa && sb && sa !== sb) return sa.localeCompare(sb);
+      return Number(a?.period_number) - Number(b?.period_number);
+    });
+    return periods;
+  };
+
+  const getAllSlotsForView = () => {
+    // Build one row per period_number.
+    // Prefer Monday's time for consistency across the week (weekly default).
+    const map = new Map<number, any>();
+    const mondayPeriods = getDayPeriodsSorted('Monday');
+
+    mondayPeriods.forEach((p: any) => {
+      const pn = Number(p?.period_number);
+      if (!pn) return;
+      map.set(pn, {
+        key: `P${pn}`,
+        period_number: pn,
+        start_time: toTimeStr(p?.start_time),
+        end_time: toTimeStr(p?.end_time),
+      });
+    });
+
+    // Fill missing periods/times from other days
+    days.forEach((d) => {
+      getDayPeriodsSorted(d).forEach((p: any) => {
+        const pn = Number(p?.period_number);
+        if (!pn) return;
+        const existing = map.get(pn);
+        const st = toTimeStr(p?.start_time);
+        const et = toTimeStr(p?.end_time);
+        if (!existing) {
+          map.set(pn, {
+            key: `P${pn}`,
+            period_number: pn,
+            start_time: st,
+            end_time: et,
+          });
+        } else {
+          if (!existing.start_time && st) existing.start_time = st;
+          if (!existing.end_time && et) existing.end_time = et;
+        }
+      });
+    });
+
+    const arr = Array.from(map.values());
+    arr.sort((a: any, b: any) => Number(a.period_number) - Number(b.period_number));
+    return arr;
+  };
+
+  const viewSlots = getAllSlotsForView();
+
+  const selectedViewClass = classes.find((c) => getClassCode(c) === viewClassCode);
+  const selectedShift = selectedViewClass?.shift || '';
+  const shiftBreak = selectedShift ? shiftBreakTimes.find((x) => String(x.shift) === String(selectedShift)) : null;
+  const shiftBreakStart = toTimeStr(shiftBreak?.break_start_time);
+  const shiftBreakEnd = toTimeStr(shiftBreak?.break_end_time);
+
+  const buildViewRows = () => {
+    const slots = [...viewSlots].sort((a: any, b: any) => Number(a?.period_number) - Number(b?.period_number));
+    const rows: any[] = [];
+
+    slots.forEach((slot: any) => {
+      rows.push(slot);
+      // Insert break after period 3
+      if (Number(slot?.period_number) === 3 && shiftBreakStart && shiftBreakEnd) {
+        rows.push({
+          key: `break-${selectedShift}-${shiftBreakStart}-${shiftBreakEnd}`,
+          type: 'break',
+          start_time: shiftBreakStart,
+          end_time: shiftBreakEnd,
+        });
+      }
+    });
+
+    // If there are no slots or period 3 doesn't exist, still append break as standalone (if configured)
+    if (slots.length > 0 && !slots.some((s: any) => Number(s?.period_number) === 3) && shiftBreakStart && shiftBreakEnd) {
+      rows.push({
+        key: `break-${selectedShift}-${shiftBreakStart}-${shiftBreakEnd}`,
+        type: 'break',
+        start_time: shiftBreakStart,
+        end_time: shiftBreakEnd,
+      });
+    }
+
+    return rows;
+  };
+
+  const viewRows = buildViewRows();
 
   const getCell = (day: string, slot: any) => {
     return allPeriods.find((p: any) => {
@@ -303,9 +505,13 @@ const Timetable: React.FC = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Timetable</h1>
-          <p className="text-sm text-gray-500">Manage timetables for classes (6 periods: 3 before break, 3 after break)</p>
+          <p className="text-sm text-gray-500">Manage timetables for classes (day-wise dynamic periods & timings)</p>
         </div>
-        <button onClick={openAdd} className="btn-primary flex items-center gap-2"><FaPlus />Add Entry</button>
+        <div className="flex gap-2">
+          <button onClick={openShiftBreak} className="btn-secondary flex items-center gap-2">Set Shift Break</button>
+          <button onClick={openDayTiming} className="btn-secondary flex items-center gap-2">Set Day Timing</button>
+          <button onClick={openAdd} className="btn-primary flex items-center gap-2"><FaPlus />Add Entry</button>
+        </div>
       </div>
 
     
@@ -353,72 +559,54 @@ const Timetable: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {/* Periods 1-3 (Before Break) */}
-                {slots.slice(0, 3).map((slot) => (
-                  <tr key={slot.key} className="border-t border-gray-50">
-                    <td className="px-3 py-2 whitespace-nowrap text-gray-700 font-medium">
-                      <div>Period {slot.period_number}</div>
-                      <div className="text-xs text-gray-400">{slot.start_time} - {slot.end_time}</div>
-                    </td>
-                    {days.map((d) => {
-                      const cell = getCell(d, slot);
-                      const subj = cell?.subject_name || cell?.subject_code;
-                      const tname = cell?.teacher_name || cell?.teacher_code;
-                      return (
-                        <td key={d} className="px-3 py-2 align-top border-l border-gray-50 min-w-[160px]">
-                          {cell ? (
-                            <div className="space-y-1">
-                              <div className="font-semibold text-gray-900">{subj || '—'}</div>
-                              <div className="text-gray-500 text-xs">{tname || '—'}</div>
-                            </div>
-                          ) : (
-                            <span className="text-gray-300">—</span>
-                          )}
-                        </td>
-                      );
-                    })}
+                {viewRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={days.length + 1} className="text-center py-10 text-gray-400">No periods added yet</td>
                   </tr>
-                ))}
-
-                {/* Break Row */}
-                <tr className="bg-blue-50">
-                  <td className="px-3 py-2 whitespace-nowrap text-gray-700 font-medium">
-                    <div>BREAK</div>
-                    <div className="text-xs text-gray-500">{BREAK_SLOT.start_time} - {BREAK_SLOT.end_time}</div>
-                  </td>
-                  {days.map((d) => (
-                    <td key={d} className="px-3 py-2  text-blue-600 text-sm">
-                         Break
-                    </td>
-                  ))}
-                </tr>
-
-                {/* Periods 4-6 (After Break) */}
-                {slots.slice(3, 6).map((slot) => (
-                  <tr key={slot.key} className="border-t border-gray-50">
-                    <td className="px-3 py-2 whitespace-nowrap text-gray-700 font-medium">
-                      <div>Period {slot.period_number}</div>
-                      <div className="text-xs text-gray-400">{slot.start_time} - {slot.end_time}</div>
-                    </td>
-                    {days.map((d) => {
-                      const cell = getCell(d, slot);
-                      const subj = cell?.subject_name || cell?.subject_code;
-                      const tname = cell?.teacher_name || cell?.teacher_code;
+                ) : (
+                  viewRows.map((row: any) => {
+                    if (row?.type === 'break') {
                       return (
-                        <td key={d} className="px-3 py-2 align-top border-l border-gray-50 min-w-[160px]">
-                          {cell ? (
-                            <div className="space-y-1">
-                              <div className="font-semibold text-gray-900">{subj || '—'}</div>
-                              <div className="text-gray-500 text-xs">{tname || '—'}</div>
-                            </div>
-                          ) : (
-                            <span className="text-gray-300">—</span>
-                          )}
-                        </td>
+                        <tr key={row.key} className="bg-blue-50">
+                          <td className="px-3 py-2 whitespace-nowrap text-gray-700 font-medium">
+                            <div>BREAK</div>
+                            <div className="text-xs text-gray-500">{row.start_time} - {row.end_time}</div>
+                          </td>
+                          {days.map((d: any) => (
+                            <td key={d} className="px-3 py-2 text-blue-600 text-sm">Break</td>
+                          ))}
+                        </tr>
                       );
-                    })}
-                  </tr>
-                ))}
+                    }
+
+                    const slot = row;
+                    return (
+                      <tr key={slot.key} className="border-t border-gray-50">
+                        <td className="px-3 py-2 whitespace-nowrap text-gray-700 font-medium">
+                          <div>Period {slot.period_number}</div>
+                          <div className="text-xs text-gray-400">{slot.start_time || '—'} - {slot.end_time || '—'}</div>
+                        </td>
+                        {days.map((d) => {
+                          const cell = getCell(d, slot);
+                          const subj = cell?.subject_name || cell?.subject_code;
+                          const tname = cell?.teacher_name || cell?.teacher_code;
+                          return (
+                            <td key={d} className="px-3 py-2 align-top border-l border-gray-50 min-w-[160px]">
+                              {cell ? (
+                                <div className="space-y-1">
+                                  <div className="font-semibold text-gray-900">{subj || '—'}</div>
+                                  <div className="text-gray-500 text-xs">{tname || '—'}</div>
+                                </div>
+                              ) : (
+                                <span className="text-gray-300">—</span>
+                              )}
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    );
+                  })
+                )}
               </tbody>
             </table>
           )}
@@ -444,7 +632,6 @@ const Timetable: React.FC = () => {
                 <tr><td colSpan={7} className="text-center py-8 text-gray-400">No timetable entries</td></tr>
               ) : (
                 items.map(it => {
-                  const slotInfo = TIME_SLOTS.find(s => String(s.period_number) === String(it.period));
                   return (
                     <tr key={it._id} className="border-b border-gray-50 hover:bg-gray-50">
                       <td className="py-3 font-medium text-primary-600">
@@ -453,7 +640,7 @@ const Timetable: React.FC = () => {
                       <td className="py-3">{it.day || '—'}</td>
                       <td className="py-3">{it.period || '—'}</td>
                       <td className="py-3 text-xs text-gray-500">
-                        {slotInfo ? `${slotInfo.start_time} - ${slotInfo.end_time}` : '—'}
+                        {it.start_time && it.end_time ? `${it.start_time} - ${it.end_time}` : '—'}
                       </td>
                       <td className="py-3">{getSubjectLabelByCode(it.subject) || it.subject || '—'}</td>
                       <td className="py-3">{it.teacher_code ? getTeacherLabelByCode(it.teacher_code) : '—'}</td>
@@ -502,33 +689,67 @@ const Timetable: React.FC = () => {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Day</label>
-              <select className="input-field" value={form.day} onChange={e=>setForm({...form,day:e.target.value})} disabled={Boolean(editing)}>
+              <select
+                className="input-field"
+                value={form.day}
+                onChange={(e) => {
+                  const nextDay = e.target.value;
+                  setForm((prev) => {
+                    const keepTimes = String(nextDay) === 'Monday' || String(nextDay) === 'Saturday';
+                    return {
+                      ...prev,
+                      day: nextDay,
+                      start_time: keepTimes ? prev.start_time : '',
+                      end_time: keepTimes ? prev.end_time : '',
+                    };
+                  });
+                }}
+                disabled={Boolean(editing)}
+              >
                 {['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'].map(d=> <option key={d}>{d}</option>)}
               </select>
             </div>
-            <div className="col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Periods (Bulk Select)</label>
-              <div className="flex flex-wrap gap-2 p-2 border rounded-lg bg-gray-50">
-                {TIME_SLOTS.map(slot => {
-                  const isSelected = form.periods.includes(slot.period_number);
-                  return (
-                    <button
-                      key={slot.period_number}
-                      type="button"
-                      onClick={() => togglePeriod(slot.period_number)}
-                      className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
-                        isSelected 
-                          ? 'bg-primary-600 text-white' 
-                          : 'bg-white text-gray-600 border border-gray-200 hover:border-primary-300'
-                      }`}
-                    >
-                      P{slot.period_number}
-                    </button>
-                  );
-                })}
-              </div>
-              {form.periods.length === 0 && <p className="text-[10px] text-red-500 mt-1">Select at least one period</p>}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Period Number</label>
+              <input
+                type="number"
+                className="input-field"
+                min={1}
+                value={form.period_number}
+                onChange={(e) => setForm({ ...form, period_number: Number(e.target.value) })}
+                required
+              />
             </div>
+            {(String(form.day) === 'Monday' || String(form.day) === 'Saturday') ? (
+              <>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Start Time</label>
+                  <input
+                    type="time"
+                    className="input-field"
+                    value={form.start_time}
+                    onChange={(e) => setForm({ ...form, start_time: e.target.value })}
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">End Time</label>
+                  <input
+                    type="time"
+                    className="input-field"
+                    value={form.end_time}
+                    onChange={(e) => setForm({ ...form, end_time: e.target.value })}
+                    required
+                  />
+                </div>
+              </>
+            ) : (
+              <div className="col-span-2">
+                <div className="text-xs text-gray-500 mt-1">
+                  Start/End time will be inherited from Monday for this period.
+                </div>
+              </div>
+            )}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Subject</label>
               <select
@@ -567,6 +788,140 @@ const Timetable: React.FC = () => {
           <div className="flex gap-3 pt-2">
             <button type="submit" className="btn-primary flex-1">Save</button>
             <button type="button" onClick={closeModal} className="btn-secondary flex-1">Cancel</button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal isOpen={timingModalOpen} onClose={closeTimingModal} title="Set Day Timing (Short Day Support)">
+        <form onSubmit={handleTimingSubmit} className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Class Code</label>
+              <select
+                className="input-field"
+                required
+                value={timingForm.class_code}
+                onChange={(e) => setTimingForm((p) => ({ ...p, class_code: e.target.value }))}
+                disabled={metaLoading}
+              >
+                <option value="">Select class</option>
+                {classes.map((c) => (
+                  <option key={c._id || getClassCode(c)} value={getClassCode(c)}>
+                    {getClassLabel(c)}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Day</label>
+              <select
+                className="input-field"
+                value={timingForm.day}
+                onChange={(e) => setTimingForm((p) => ({ ...p, day: e.target.value }))}
+              >
+                {['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'].map(d=> <option key={d}>{d}</option>)}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">School Start Time</label>
+              <input
+                type="time"
+                className="input-field"
+                value={timingForm.day_start_time}
+                onChange={(e) => setTimingForm((p) => ({ ...p, day_start_time: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">School End Time</label>
+              <input
+                type="time"
+                className="input-field"
+                value={timingForm.day_end_time}
+                onChange={(e) => setTimingForm((p) => ({ ...p, day_end_time: e.target.value }))}
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Break Start (optional)</label>
+              <input
+                type="time"
+                className="input-field"
+                value={timingForm.break_start_time}
+                onChange={(e) => setTimingForm((p) => ({ ...p, break_start_time: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Break End (optional)</label>
+              <input
+                type="time"
+                className="input-field"
+                value={timingForm.break_end_time}
+                onChange={(e) => setTimingForm((p) => ({ ...p, break_end_time: e.target.value }))}
+              />
+            </div>
+          </div>
+
+          <div className="flex gap-3 pt-2">
+            <button type="submit" className="btn-primary flex-1">Save</button>
+            <button type="button" onClick={closeTimingModal} className="btn-secondary flex-1">Cancel</button>
+          </div>
+        </form>
+      </Modal>
+
+      <Modal isOpen={shiftBreakModalOpen} onClose={closeShiftBreakModal} title="Set Permanent Break Time (Shift Wise)">
+        <form onSubmit={handleShiftBreakSubmit} className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Shift</label>
+              <select
+                className="input-field"
+                value={shiftBreakForm.shift}
+                onChange={(e) => {
+                  const nextShift = e.target.value;
+                  const existing = shiftBreakTimes.find((x) => String(x.shift) === String(nextShift));
+                  setShiftBreakForm({
+                    shift: nextShift,
+                    break_start_time: existing?.break_start_time || '',
+                    break_end_time: existing?.break_end_time || '',
+                  });
+                }}
+                required
+              >
+                <option value="Morning">Morning</option>
+                <option value="Afternoon">Afternoon</option>
+              </select>
+              <div className="text-[11px] text-gray-500 mt-1">
+                {shiftBreakLoading ? 'Loading saved break times...' : null}
+              </div>
+            </div>
+            <div />
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Break Start Time</label>
+              <input
+                type="time"
+                className="input-field"
+                value={shiftBreakForm.break_start_time}
+                onChange={(e) => setShiftBreakForm((p) => ({ ...p, break_start_time: e.target.value }))}
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Break End Time</label>
+              <input
+                type="time"
+                className="input-field"
+                value={shiftBreakForm.break_end_time}
+                onChange={(e) => setShiftBreakForm((p) => ({ ...p, break_end_time: e.target.value }))}
+                required
+              />
+            </div>
+          </div>
+
+          <div className="flex gap-3 pt-2">
+            <button type="submit" className="btn-primary flex-1">Save</button>
+            <button type="button" onClick={closeShiftBreakModal} className="btn-secondary flex-1">Cancel</button>
           </div>
         </form>
       </Modal>

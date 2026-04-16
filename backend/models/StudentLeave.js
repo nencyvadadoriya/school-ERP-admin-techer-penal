@@ -12,6 +12,7 @@ const studentLeaveSchema = new mongoose.Schema({
   status: { type: String, enum: ['Pending', 'Approved', 'Rejected'], default: 'Pending' },
   approved_by: { type: String },
   remarks: { type: String },
+  rejection_reason: { type: String },
   is_delete: { type: Boolean, default: false },
   is_active: { type: Boolean, default: true },
 }, { timestamps: true });

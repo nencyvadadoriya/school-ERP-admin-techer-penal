@@ -2,22 +2,34 @@ import React, { useState, useEffect } from 'react';
 import { 
   FaUserGraduate, FaChalkboardTeacher, FaSchool, FaMoneyBillWave, 
   FaCalendarCheck, FaFileAlt, FaChartLine, FaTrophy, FaUsers,
-  FaBookOpen, FaPercentage 
+  FaBookOpen, FaPercentage, FaBell
 } from 'react-icons/fa';
+import { toast } from 'react-toastify';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, 
   ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line,
   AreaChart, Area, ComposedChart 
 } from 'recharts';
-import { dashboardAPI } from '../../services/api';
+import { dashboardAPI, attendanceAPI } from '../../services/api';
 import Spinner from '../../components/Spinner';
 
 const AdminDashboard: React.FC = () => {
   const [stats, setStats] = useState({ 
-    totalStudents: 0, totalTeachers: 0, totalClasses: 0, 
-    attendancePercentage: 0, pendingLeaves: 0, feesCollected: 0 
+    totalStudents: 0, 
+    totalTeachers: 0, 
+    totalClasses: 0, 
+    attendancePercentage: 0, 
+    pendingLeaves: 0, 
+    feesCollected: 0,
+    feesPending: 0,
+    charts: {
+      weeklyAttendance: [],
+      genderDistribution: [],
+      teacherWorkload: []
+    }
   });
   const [loading, setLoading] = useState<boolean>(true);
+  const [checkingAttendance, setCheckingAttendance] = useState<boolean>(false);
 
   // Sample additional data (replace with API calls)
   const monthlyFeesData = [
@@ -79,15 +91,39 @@ const AdminDashboard: React.FC = () => {
     } finally { setLoading(false); }
   };
 
+  const handleCheckMissingAttendance = async () => {
+    setCheckingAttendance(true);
+    try {
+      const res = await attendanceAPI.checkMissingAttendance();
+      if (res.data.success) {
+        toast.success(res.data.message + ` Reminders sent to ${res.data.missing_count} teachers.`);
+      }
+    } catch (e: any) {
+      toast.error(e.response?.data?.message || 'Failed to check attendance');
+    } finally {
+      setCheckingAttendance(false);
+    }
+  };
+
   if (loading) return <Spinner />;
 
   return (
     <div className="w-full max-w-full overflow-x-hidden">
       <div className="space-y-4">
         {/* Header */}
-        <div>
-          <h1 className="text-xl md:text-2xl font-bold text-gray-900">Admin Dashboard</h1>
-          <p className="text-gray-500 text-sm">Complete school overview & analytics</p>
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-xl md:text-2xl font-bold text-gray-900">Admin Dashboard</h1>
+            <p className="text-gray-500 text-sm">Complete school overview & analytics</p>
+          </div>
+          <button 
+            onClick={handleCheckMissingAttendance}
+            disabled={checkingAttendance}
+            className={`flex items-center gap-2 px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-lg transition-colors shadow-sm text-sm font-medium ${checkingAttendance ? 'opacity-75 cursor-not-allowed' : ''}`}
+          >
+            <FaBell className={checkingAttendance ? 'animate-bounce' : ''} />
+            {checkingAttendance ? 'Checking...' : 'Check Attendance & Notify Teachers'}
+          </button>
         </div>
 
         {/* Stats Cards */}
@@ -175,13 +211,13 @@ const AdminDashboard: React.FC = () => {
             </h2>
             <div style={{ height: '250px' }}>
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={[
-                  { name: 'Mon', present: 88, absent: 12 },
-                  { name: 'Tue', present: 91, absent: 9 },
-                  { name: 'Wed', present: 85, absent: 15 },
-                  { name: 'Thu', present: 93, absent: 7 },
-                  { name: 'Fri', present: 89, absent: 11 },
-                  { name: 'Sat', present: 78, absent: 22 },
+                <BarChart data={stats.charts.weeklyAttendance.length > 0 ? stats.charts.weeklyAttendance : [
+                  { name: 'Mon', present: 0, absent: 0 },
+                  { name: 'Tue', present: 0, absent: 0 },
+                  { name: 'Wed', present: 0, absent: 0 },
+                  { name: 'Thu', present: 0, absent: 0 },
+                  { name: 'Fri', present: 0, absent: 0 },
+                  { name: 'Sat', present: 0, absent: 0 },
                 ]}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="name" />
@@ -300,7 +336,10 @@ const AdminDashboard: React.FC = () => {
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
-                    data={genderData}
+                    data={stats.charts.genderDistribution.length > 0 ? stats.charts.genderDistribution : [
+                      { name: 'Boys', value: 0, color: '#3b82f6' },
+                      { name: 'Girls', value: 0, color: '#ec489a' },
+                    ]}
                     cx="50%"
                     cy="50%"
                     innerRadius={40}
@@ -308,7 +347,10 @@ const AdminDashboard: React.FC = () => {
                     dataKey="value"
                     label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
                   >
-                    {genderData.map((entry, index) => (
+                    {(stats.charts.genderDistribution.length > 0 ? stats.charts.genderDistribution : [
+                      { name: 'Boys', value: 0, color: '#3b82f6' },
+                      { name: 'Girls', value: 0, color: '#ec489a' },
+                    ]).map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={entry.color} />
                     ))}
                   </Pie>
@@ -325,12 +367,12 @@ const AdminDashboard: React.FC = () => {
             </h2>
             <div style={{ height: '200px' }}>
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={teacherWorkload} layout="vertical">
+                <BarChart data={stats.charts.teacherWorkload} layout="vertical">
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis type="number" />
                   <YAxis dataKey="teacher" type="category" width={70} tick={{ fontSize: 10 }} />
                   <Tooltip /> 
-                  <Bar dataKey="students" fill="#8b5cf6" name="Students" radius={[0, 4, 4, 0]} />
+                  <Bar dataKey="classes" fill="#8b5cf6" name="Classes" radius={[0, 4, 4, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>

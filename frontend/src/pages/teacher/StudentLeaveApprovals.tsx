@@ -1,24 +1,13 @@
 import React, { useEffect, useState } from 'react';
-import { toast } from 'react-toastify';
-import { dashboardAPI, leaveAPI, teacherAPI, classAPI } from '../../services/api';
+import { dashboardAPI, leaveAPI } from '../../services/api';
 import Spinner from '../../components/Spinner';
 import Badge from '../../components/Badge';
 import { useAuth } from '../../context/AuthContext';
+import { toast } from 'react-toastify';
 
 // Normalize class code: "STD-1-A-English-Primary-Morning" -> "1aenglish"
 const normalizeCode = (s: string) =>
   String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-
-const getCodeVariants = (code: string): string[] => {
-  const s = String(code || '').trim();
-  const variants = new Set<string>();
-  variants.add(s);
-  const noSTD = s.replace(/^STD-/i, '');
-  variants.add(noSTD);
-  const parts = noSTD.split('-');
-  if (parts.length > 3) variants.add(parts.slice(0, 3).join('-'));
-  return Array.from(variants).filter(Boolean);
-};
 
 const StudentLeaveApprovals: React.FC = () => {
   const { user } = useAuth();
@@ -29,64 +18,16 @@ const StudentLeaveApprovals: React.FC = () => {
   const [myClasses, setMyClasses] = useState<string[]>([]); // resolved DB class_codes
   const [tabClass, setTabClass] = useState<string>('');
 
-  // Resolve raw code to actual DB class_code
-  const resolveCode = (rawCode: string, allClasses: any[]): string => {
-    const variants = getCodeVariants(rawCode);
-    for (const v of variants) {
-      const found = allClasses.find((c: any) => c.class_code === v);
-      if (found) return found.class_code;
-    }
-    const targetNorm = normalizeCode(rawCode);
-    const found = allClasses.find((c: any) => normalizeCode(c.class_code) === targetNorm);
-    return found?.class_code || variants.sort((a, b) => a.length - b.length)[0] || rawCode;
-  };
-
-  // Get assigned class codes using multiple fallback strategies
+  // Get assigned class codes strictly from teacher dashboard API
   const fetchAssignedClassCodes = async (): Promise<string[]> => {
-    let rawCodes: string[] = [];
-
-    // Strategy 1: Dashboard API
     try {
       const r = await dashboardAPI.teacher();
       const cls = r.data.data?.myClasses || [];
-      const codes = cls.map((c: any) => c.class_code).filter(Boolean);
-      if (codes.length > 0) rawCodes = codes;
+      const codes = (Array.isArray(cls) ? cls : []).map((c: any) => c?.class_code).filter(Boolean);
+      return [...new Set(codes)];
     } catch (e) {
-      console.warn('Dashboard API failed...');
-    }
-
-    // Strategy 2: Fresh teacher profile from DB
-    if (rawCodes.length === 0) {
-      const teacherId = user?.id || user?._id;
-      if (teacherId) {
-        try {
-          const tR = await teacherAPI.getById(teacherId);
-          const assigned: string[] = Array.isArray(tR.data.data?.assigned_class)
-            ? tR.data.data.assigned_class.filter(Boolean)
-            : [];
-          if (assigned.length > 0) rawCodes = assigned;
-        } catch (e) {
-          console.warn('Teacher profile fetch failed...');
-        }
-      }
-    }
-
-    // Strategy 3: localStorage
-    if (rawCodes.length === 0) {
-      rawCodes = Array.isArray(user?.assigned_class) ? user.assigned_class.filter(Boolean) : [];
-    }
-
-    if (rawCodes.length === 0) return [];
-
-    // Resolve codes against actual DB class documents
-    try {
-      const cR = await classAPI.getAll();
-      const allClasses: any[] = cR.data.data || [];
-      const resolved = rawCodes.map((code) => resolveCode(code, allClasses));
-      // Deduplicate
-      return [...new Set(resolved)];
-    } catch (e) {
-      return rawCodes;
+      console.error('Failed to load teacher classes:', e);
+      return [];
     }
   };
 
@@ -143,22 +84,42 @@ const StudentLeaveApprovals: React.FC = () => {
     }
   }, [tabClass, allLeaves, myClasses]);
 
-  const handleAction = async (id: string, status: 'Approved' | 'Rejected') => {
+  const [selectedLeave, setSelectedLeave] = useState<any>(null);
+  const [rejectionReason, setRejectionReason] = useState('');
+  const [showRejectModal, setShowRejectModal] = useState(false);
+
+  const handleAction = async (id: string, status: 'Approved' | 'Rejected', reason?: string) => {
     setActionLoading(id + status);
     try {
       await leaveAPI.updateStudentLeave(id, {
         status,
+        rejection_reason: reason,
         approved_by: `${user?.first_name || ''} ${user?.last_name || ''}`.trim() || 'Teacher',
       });
       toast.success(`Leave ${status} successfully`);
       // Instant UI update without full re-fetch
-      setAllLeaves(prev => prev.map(l => l._id === id ? { ...l, status } : l));
+      setAllLeaves(prev => prev.map(l => l._id === id ? { ...l, status, rejection_reason: reason } : l));
+      setShowRejectModal(false);
+      setRejectionReason('');
     } catch (e: any) {
       const msg = e?.response?.data?.message || 'Error updating leave';
       toast.error(msg);
     } finally {
       setActionLoading(null);
     }
+  };
+
+  const handleRejectClick = (leave: any) => {
+    setSelectedLeave(leave);
+    setShowRejectModal(true);
+  };
+
+  const confirmReject = () => {
+    if (!rejectionReason.trim()) {
+      toast.error('Please enter a reason for rejection');
+      return;
+    }
+    handleAction(selectedLeave._id, 'Rejected', rejectionReason);
   };
 
   if (loading) return <Spinner />;
@@ -239,7 +200,7 @@ const StudentLeaveApprovals: React.FC = () => {
                             {actionLoading === l._id + 'Approved' ? '...' : 'Approve'}
                           </button>
                           <button
-                            onClick={() => handleAction(l._id, 'Rejected')}
+                            onClick={() => handleRejectClick(l)}
                             disabled={!!actionLoading}
                             className="px-3 py-1 bg-red-100 text-red-700 rounded-lg text-xs font-medium hover:bg-red-200 disabled:opacity-50"
                           >
@@ -247,9 +208,16 @@ const StudentLeaveApprovals: React.FC = () => {
                           </button>
                         </div>
                       ) : (
-                        <span className="text-gray-400 text-xs">
-                          {l.approved_by ? `By: ${l.approved_by}` : '—'}
-                        </span>
+                        <div className="flex flex-col gap-1">
+                          <span className="text-gray-400 text-xs">
+                            {l.approved_by ? `By: ${l.approved_by}` : '—'}
+                          </span>
+                          {l.status === 'Rejected' && l.rejection_reason && (
+                            <span className="text-[10px] text-red-500 italic max-w-[150px] break-words">
+                              Reason: {l.rejection_reason}
+                            </span>
+                          )}
+                        </div>
                       )}
                     </td>
                   </tr>
@@ -259,6 +227,35 @@ const StudentLeaveApprovals: React.FC = () => {
           </table>
         </div>
       </div>
+
+      {showRejectModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl p-6 max-w-md w-full shadow-xl">
+            <h3 className="text-lg font-bold text-gray-900 mb-2">Reject Leave Application</h3>
+            <p className="text-sm text-gray-500 mb-4">Please provide a reason for rejecting this leave request. This will be visible to the student.</p>
+            <textarea
+              className="w-full border border-gray-200 rounded-lg p-3 text-sm focus:ring-2 focus:ring-primary-500 outline-none min-h-[100px]"
+              placeholder="Enter rejection reason..."
+              value={rejectionReason}
+              onChange={(e) => setRejectionReason(e.target.value)}
+            />
+            <div className="flex justify-end gap-3 mt-6">
+              <button 
+                onClick={() => setShowRejectModal(false)}
+                className="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 rounded-lg"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={confirmReject}
+                className="px-4 py-2 text-sm font-medium bg-red-600 text-white hover:bg-red-700 rounded-lg"
+              >
+                Reject Leave
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -3,6 +3,15 @@ const mongoose = require('mongoose');
 const feesSchema = new mongoose.Schema({
   student_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Student', required: true },
   gr_number: { type: String, required: true },
+  std: { type: String },
+  division: { type: String },
+  class_code: { type: String },
+  shift: { type: String, enum: ['Morning', 'Afternoon'] },
+  medium: { type: String, enum: ['English', 'Gujarati', 'Hindi'] },
+  stream: {
+    type: String,
+    enum: ['Science-Maths', 'Science-Bio', 'Commerce', 'Foundation', 'Primary', 'Upper Primary', 'Secondary', 'Higher Secondary'],
+  },
   fee_type: { type: String, enum: ['Tuition', 'Transport', 'Library', 'Lab', 'Sports', 'Other'], default: 'Tuition' },
   total_amount: { type: Number, required: true },
   amount_paid: { type: Number, default: 0 },

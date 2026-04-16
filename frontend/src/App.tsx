@@ -2,11 +2,13 @@ import React, { useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { ToastContainer } from 'react-toastify';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import ErrorBoundary from './components/ErrorBoundary';
 
 // Auth Pages
 import Login from './pages/auth/Login';
 import ForgotPassword from './pages/auth/ForgotPassword';
-import VerifyEmail from './pages/auth/VerifyEmail';
+import VerifyOTP from './pages/auth/VerifyOTP';
+import ResetPassword from './pages/auth/ResetPassword';
 import ChangePassword from './pages/auth/ChangePassword';
 
 // Layouts
@@ -42,6 +44,7 @@ import TeacherExams from './pages/teacher/TeacherExams';
 import TeacherEvents from './pages/teacher/TeacherEvents';
 import TeacherNotices from './pages/teacher/TeacherNotices';
 import StudentLeaveApprovals from './pages/teacher/StudentLeaveApprovals';
+import HolidayCalendar from './pages/HolidayCalendar';
 
 // Student Pages
 import StudentDashboard from './pages/student/StudentDashboard';
@@ -88,7 +91,8 @@ function AppContent() {
       {/* Public Routes */}
       <Route path="/login" element={!user ? <Login /> : <Navigate to={`/${user.role}/dashboard`} replace />} />
       <Route path="/auth/forgot-password" element={<ForgotPassword />} />
-      <Route path="/auth/verify-email" element={<VerifyEmail />} />
+      <Route path="/auth/verify-otp" element={<VerifyOTP />} />
+      <Route path="/auth/reset-password" element={<ResetPassword />} />
       <Route path="/auth/change-password" element={<ChangePassword />} />
 
       {/* Admin Routes */}
@@ -107,6 +111,7 @@ function AppContent() {
       <Route path="/admin/assign-class-teacher" element={<PrivateRoute role="admin"><DashboardLayout><AssignClassTeacher /></DashboardLayout></PrivateRoute>} />
       <Route path="/admin/subject-assignment" element={<PrivateRoute role="admin"><DashboardLayout><SubjectAssignment /></DashboardLayout></PrivateRoute>} />
       <Route path="/admin/timetable" element={<PrivateRoute role="admin"><DashboardLayout><Timetable /></DashboardLayout></PrivateRoute>} />
+      <Route path="/admin/calendar" element={<PrivateRoute role="admin"><DashboardLayout><HolidayCalendar /></DashboardLayout></PrivateRoute>} />
       <Route path="/admin/leaves" element={<PrivateRoute role="admin"><DashboardLayout><LeaveManagement /></DashboardLayout></PrivateRoute>} />
       <Route path="/admin/profile" element={<PrivateRoute role="admin"><DashboardLayout><Profile /></DashboardLayout></PrivateRoute>} />
 
@@ -117,6 +122,7 @@ function AppContent() {
       <Route path="/teacher/homework" element={<PrivateRoute role="teacher"><DashboardLayout><TeacherHomework /></DashboardLayout></PrivateRoute>} />
       <Route path="/teacher/results" element={<PrivateRoute role="teacher"><DashboardLayout><EnterResults /></DashboardLayout></PrivateRoute>} />
       <Route path="/teacher/timetable" element={<PrivateRoute role="teacher"><DashboardLayout><TeacherTimetable /></DashboardLayout></PrivateRoute>} />
+      <Route path="/teacher/calendar" element={<PrivateRoute role="teacher"><DashboardLayout><HolidayCalendar /></DashboardLayout></PrivateRoute>} />
       <Route path="/teacher/leaves" element={<PrivateRoute role="teacher"><DashboardLayout><StudentLeaveApprovals /></DashboardLayout></PrivateRoute>} />
       <Route path="/teacher/events" element={<PrivateRoute role="teacher"><DashboardLayout><TeacherEvents /></DashboardLayout></PrivateRoute>} />
       <Route path="/teacher/notices" element={<PrivateRoute role="teacher"><DashboardLayout><TeacherNotices /></DashboardLayout></PrivateRoute>} />
@@ -126,6 +132,7 @@ function AppContent() {
       {/* Student Routes */}
       <Route path="/student/dashboard" element={<PrivateRoute role="student"><DashboardLayout><StudentDashboard /></DashboardLayout></PrivateRoute>} />
       <Route path="/student/timetable" element={<PrivateRoute role="student"><DashboardLayout><StudentTimetable /></DashboardLayout></PrivateRoute>} />
+      <Route path="/student/calendar" element={<PrivateRoute role="student"><DashboardLayout><HolidayCalendar /></DashboardLayout></PrivateRoute>} />
       <Route path="/student/leave" element={<PrivateRoute role="student"><DashboardLayout><StudentLeave /></DashboardLayout></PrivateRoute>} />
       <Route path="/student/profile" element={<PrivateRoute role="student"><DashboardLayout><Profile /></DashboardLayout></PrivateRoute>} />
 
@@ -137,12 +144,14 @@ function AppContent() {
 
 function App() {
   return (
-    <Router>
-      <AuthProvider>
-        <AppContent />
-        <ToastContainer position="top-right" autoClose={3000} />
-      </AuthProvider>
-    </Router>
+    <ErrorBoundary>
+      <Router>
+        <AuthProvider>
+          <AppContent />
+          <ToastContainer position="top-right" autoClose={3000} />
+        </AuthProvider>
+      </Router>
+    </ErrorBoundary>
   );
 }
 

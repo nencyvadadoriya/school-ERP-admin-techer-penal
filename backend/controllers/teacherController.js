@@ -2,6 +2,93 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const Teacher = require('../models/Teacher');
 const { uploadToCloudinary } = require('../config/cloudinary');
+const { sendTeacherWelcomeEmail, sendOTPEmail } = require('../utils/emailService');
+
+// Forgot Password - Send OTP for Teacher
+const forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+    const teacher = await Teacher.findOne({ email, is_delete: false });
+
+    if (!teacher) {
+      return res.status(404).json({
+        success: false,
+        message: 'Teacher with this email not found',
+      });
+    }
+
+    // Generate 6-digit OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    
+    // Store OTP and expiry (10 minutes)
+    teacher.resetPasswordOTP = otp;
+    teacher.resetPasswordExpires = Date.now() + 10 * 60 * 1000;
+    await teacher.save();
+
+    // Send Email
+    const schoolName = process.env.SCHOOL_NAME || 'Our School';
+    const emailSent = await sendOTPEmail(email, otp, schoolName);
+    if (!emailSent) {
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to send OTP email',
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'OTP sent to your email',
+    });
+  } catch (error) {
+    console.error('Error in teacher forgotPassword:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error processing forgot password request',
+      error: error.message,
+    });
+  }
+};
+
+// Verify OTP and Reset Password for Teacher
+const verifyOTPAndResetPassword = async (req, res) => {
+  try {
+    const { email, otp, newPassword } = req.body;
+
+    const teacher = await Teacher.findOne({
+      email,
+      resetPasswordOTP: otp,
+      resetPasswordExpires: { $gt: Date.now() },
+      is_delete: false
+    });
+
+    if (!teacher) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid or expired OTP',
+      });
+    }
+
+    // Hash new password
+    teacher.password = await bcrypt.hash(newPassword, 10);
+    
+    // Clear OTP fields
+    teacher.resetPasswordOTP = undefined;
+    teacher.resetPasswordExpires = undefined;
+    await teacher.save();
+
+    res.json({
+      success: true,
+      message: 'Password reset successful',
+    });
+  } catch (error) {
+    console.error('Error in teacher verifyOTPAndResetPassword:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error resetting password',
+      error: error.message,
+    });
+  }
+};
 
 // Helper to accept either an array, a JSON-string, or a comma-separated string
 const parseArrayInput = (val) => {
@@ -114,6 +201,21 @@ const registerTeacher = async (req, res) => {
       responsePayload.generated_password = plainPassword;
     }
 
+    // Send Welcome Email
+    try {
+      const schoolName = process.env.SCHOOL_NAME || 'Our School';
+      await sendTeacherWelcomeEmail({
+        email: teacher.email,
+        first_name: teacher.first_name,
+        last_name: teacher.last_name,
+        password: plainPassword,
+        school_name: schoolName
+      });
+    } catch (emailError) {
+      console.error('Failed to send welcome email:', emailError);
+      // We don't block the response even if email fails
+    }
+
     res.status(201).json(responsePayload);
   } catch (error) {
     console.error('Error in registerTeacher:', error);
@@ -158,7 +260,7 @@ const loginTeacher = async (req, res) => {
     if (!teacher) {
       return res.status(401).json({
         success: false,
-        message: 'Invalid email or password',
+        message: 'Invalid email/code or password',
       });
     }
 
@@ -176,7 +278,7 @@ const loginTeacher = async (req, res) => {
     if (!isPasswordValid) {
       return res.status(401).json({
         success: false,
-        message: 'Invalid email or password',
+        message: 'Invalid email/code or password',
       });
     }
 
@@ -273,6 +375,7 @@ const updateTeacher = async (req, res) => {
       subjects,
       subject_assignments,
       is_active,
+      remove_profile_image,
     } = req.body;
 
     // Check if teacher exists
@@ -285,6 +388,11 @@ const updateTeacher = async (req, res) => {
       });
     }
 
+    // Handle profile image removal
+    if (remove_profile_image === true || remove_profile_image === 'true') {
+      teacher.profile_image = null;
+    }
+
     // Handle profile image upload
     let profileImageUrl = teacher.profile_image;
     if (req.file) {
@@ -293,8 +401,8 @@ const updateTeacher = async (req, res) => {
     }
 
     // Parse arrays (accept array, JSON-string, or comma-separated string)
-    const assignedClassArray = assigned_class ? parseArrayInput(assigned_class) : teacher.assigned_class;
-    const subjectsArray = subjects ? parseArrayInput(subjects) : teacher.subjects;
+    const assignedClassArray = typeof assigned_class !== 'undefined' ? parseArrayInput(assigned_class) : teacher.assigned_class;
+    const subjectsArray = typeof subjects !== 'undefined' ? parseArrayInput(subjects) : teacher.subjects;
 
     // Update teacher
     if (first_name) teacher.first_name = first_name;
@@ -309,8 +417,8 @@ const updateTeacher = async (req, res) => {
     if (typeof medium !== 'undefined') {
       teacher.medium = medium;
     }
-    teacher.assigned_class = assignedClassArray;
-    teacher.subjects = subjectsArray;
+    if (typeof assigned_class !== 'undefined') teacher.assigned_class = assignedClassArray;
+    if (typeof subjects !== 'undefined') teacher.subjects = subjectsArray;
     if (typeof is_active !== 'undefined') {
       teacher.is_active = is_active;
     }
@@ -429,5 +537,7 @@ module.exports = {
   updateTeacher,
   deleteTeacher,
   assignSubjects,
+  forgotPassword,
+  verifyOTPAndResetPassword,
 };
 

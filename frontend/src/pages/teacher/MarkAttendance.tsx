@@ -25,11 +25,7 @@ const MarkAttendance: React.FC = () => {
       }
     } catch (e) {
       console.error("Error loading classes:", e);
-      const fallback = Array.isArray(user?.assigned_class) ? user.assigned_class : [];
-      setMyClasses(fallback.map((c: string) => ({ class_code: c })));
-      if (fallback.length > 0 && !classCode) {
-        setClassCode(fallback[0]);
-      }
+      setMyClasses([]);
     } finally {
       setLoadingClasses(false);
     }

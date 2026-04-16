@@ -58,6 +58,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggleSidebar }) => {
     { path: '/admin/events', icon: FaCalendarAlt, label: 'Events', section: 'communication' },
     { path: '/admin/leaves', icon: FaFileAlt, label: 'Leave Management', section: 'communication' },
     { path: '/admin/timetable', icon: FaClock, label: 'Timetable', section: 'academic' },
+    { path: '/admin/calendar', icon: FaCalendarAlt, label: 'Holiday Calendar', section: 'academic' },
   ];
 
   const teacherMenuItems: MenuItem[] = [
@@ -67,7 +68,8 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggleSidebar }) => {
     { path: '/teacher/exams', icon: FaClipboardList, label: 'Exams', section: 'academic' },
     { path: '/teacher/results', icon: FaFileAlt, label: 'Results', section: 'academic' },
     { path: '/teacher/timetable', icon: FaClock, label: 'Timetable', section: 'academic' },
-      { path: '/teacher/leaves', icon: FaFileAlt, label: 'Student Leaves', section: 'communication' },
+    { path: '/teacher/calendar', icon: FaCalendarAlt, label: 'Holiday Calendar', section: 'academic' },
+    { path: '/teacher/leaves', icon: FaFileAlt, label: 'Student Leaves', section: 'communication' },
     { path: '/teacher/notices', icon: FaBell, label: 'Notices', section: 'communication' },
     { path: '/teacher/events', icon: FaCalendarAlt, label: 'Events', section: 'communication' },
     { path: '/teacher/leave', icon: FaFileAlt, label: 'Leave Application', section: 'communication' },
@@ -80,6 +82,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, toggleSidebar }) => {
     { path: '/student/results', icon: FaFileAlt, label: 'Results', section: 'academic' },
     { path: '/student/fees', icon: FaMoneyBillWave, label: 'Fees', section: 'finance' },
     { path: '/student/timetable', icon: FaClock, label: 'Timetable', section: 'academic' },
+    { path: '/student/calendar', icon: FaCalendarAlt, label: 'Holiday Calendar', section: 'academic' },
     { path: '/student/notices', icon: FaBell, label: 'Notices & Events', section: 'communication' },
     { path: '/student/leave', icon: FaFileAlt, label: 'Leave Application', section: 'communication' },
   ];

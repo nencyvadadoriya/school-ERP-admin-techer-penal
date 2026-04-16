@@ -2,6 +2,92 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const Admin = require('../models/Admin');
 const { uploadToCloudinary } = require('../config/cloudinary');
+const { sendOTPEmail } = require('../utils/emailService');
+
+// Forgot Password - Send OTP
+const forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+    const admin = await Admin.findOne({ email, is_delete: false });
+
+    if (!admin) {
+      return res.status(404).json({
+        success: false,
+        message: 'Admin with this email not found',
+      });
+    }
+
+    // Generate 6-digit OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    
+    // Store OTP and expiry (10 minutes)
+    admin.resetPasswordOTP = otp;
+    admin.resetPasswordExpires = Date.now() + 10 * 60 * 1000;
+    await admin.save();
+
+    // Send Email
+    const emailSent = await sendOTPEmail(email, otp);
+    if (!emailSent) {
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to send OTP email',
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'OTP sent to your email',
+    });
+  } catch (error) {
+    console.error('Error in forgotPassword:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error processing forgot password request',
+      error: error.message,
+    });
+  }
+};
+
+// Verify OTP and Reset Password
+const verifyOTPAndResetPassword = async (req, res) => {
+  try {
+    const { email, otp, newPassword } = req.body;
+
+    const admin = await Admin.findOne({
+      email,
+      resetPasswordOTP: otp,
+      resetPasswordExpires: { $gt: Date.now() },
+      is_delete: false
+    });
+
+    if (!admin) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid or expired OTP',
+      });
+    }
+
+    // Hash new password
+    admin.password = await bcrypt.hash(newPassword, 10);
+    
+    // Clear OTP fields
+    admin.resetPasswordOTP = undefined;
+    admin.resetPasswordExpires = undefined;
+    await admin.save();
+
+    res.json({
+      success: true,
+      message: 'Password reset successful',
+    });
+  } catch (error) {
+    console.error('Error in verifyOTPAndResetPassword:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error resetting password',
+      error: error.message,
+    });
+  }
+};
 
 // Register Admin
 const registerAdmin = async (req, res) => {
@@ -180,7 +266,7 @@ const getAdminById = async (req, res) => {
 const updateAdmin = async (req, res) => {
   try {
     const { id } = req.params;
-    const { first_name, last_name, phone, pin, is_active } = req.body;
+    const { first_name, last_name, phone, pin, is_active, remove_profile_image } = req.body;
 
     // Check if admin exists
     const admin = await Admin.findOne({ _id: id, is_delete: false });
@@ -192,6 +278,11 @@ const updateAdmin = async (req, res) => {
       });
     }
 
+    // Handle profile image removal
+    if (remove_profile_image === true || remove_profile_image === 'true') {
+      admin.profile_image = null;
+    }
+
     // Handle profile image upload
     let profileImageUrl = admin.profile_image;
     if (req.file) {
@@ -200,12 +291,12 @@ const updateAdmin = async (req, res) => {
     }
 
     // Update admin
-    admin.first_name = first_name;
-    admin.last_name = last_name;
-    admin.phone = phone;
-    admin.pin = pin;
+    if (first_name) admin.first_name = first_name;
+    if (last_name) admin.last_name = last_name;
+    if (phone) admin.phone = phone;
+    if (pin) admin.pin = pin;
     admin.profile_image = profileImageUrl;
-    admin.is_active = is_active;
+    if (typeof is_active !== 'undefined') admin.is_active = is_active;
 
     await admin.save();
 
@@ -268,4 +359,6 @@ module.exports = {
   getAdminById,
   updateAdmin,
   deleteAdmin,
+  forgotPassword,
+  verifyOTPAndResetPassword,
 };

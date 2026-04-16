@@ -1,6 +1,10 @@
+const mongoose = require('mongoose');
 const Attendance = require('../models/Attendance');
 const Student = require('../models/Student');
 const StudentLeave = require('../models/StudentLeave');
+const Teacher = require('../models/Teacher');
+const Class = require('../models/Class');
+const { sendAttendanceReminderEmail } = require('../utils/emailService');
 
 // Mark / Create Attendance
 const markAttendance = async (req, res) => {
@@ -266,11 +270,26 @@ const getDailyAttendance = async (req, res) => {
 
     if (students.length === 0) {
       // Fallback: Try to parse class_code and match by components
-      // Format: "STD-1-A-English-Primary-Morning"
+      // Format: "STD-1-A-English-Primary-Morning" or "1-A-English"
       const parts = class_code.split('-');
-      if (parts.length >= 3) {
-        const std = parts[1];
-        const division = parts[2];
+      
+      // Load the class to get reliable std/division if available
+      const classDoc = await mongoose.model('Class').findOne({ class_code, is_delete: false }).lean();
+      
+      if (classDoc) {
+        students = await Student.find({
+          std: classDoc.standard,
+          $or: [
+            { division: classDoc.division },
+            { class_name: classDoc.division }
+          ],
+          is_delete: false,
+          is_active: true
+        }).select('_id gr_number first_name middle_name last_name roll_no class_code std division').lean();
+      } else if (parts.length >= 2) {
+        // Last resort: parse from string if classDoc not found
+        const std = parts[0] === 'STD' ? parts[1] : parts[0];
+        const division = parts[0] === 'STD' ? parts[2] : parts[1];
         students = await Student.find({
           std: std,
           $or: [
@@ -314,4 +333,123 @@ const getDailyAttendance = async (req, res) => {
   }
 };
 
-module.exports = { markAttendance, getAttendance, getStudentAttendance, deleteAttendance, getClassMonthSummary, getDailyAttendance };
+// Check missing attendance and send reminders
+const checkMissingAttendance = async (req, res) => {
+  try {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // 1. Get all active classes
+    const activeClasses = await Class.find({ is_delete: false, is_active: true });
+    
+    // 2. Get all attendance records for today
+    const todayAttendance = await Attendance.find({
+      date: today,
+      is_delete: false
+    }).select('class_code');
+
+    const markedClassCodes = new Set(todayAttendance.map(a => a.class_code));
+    const missingReminders = [];
+
+    for (const cls of activeClasses) {
+      if (!markedClassCodes.has(cls.class_code)) {
+        // Attendance missing for this class
+        if (cls.teacher_code) {
+          const teacher = await Teacher.findOne({ 
+            teacher_code: cls.teacher_code, 
+            is_delete: false, 
+            is_active: true 
+          });
+
+          if (teacher && teacher.email) {
+            await sendAttendanceReminderEmail(teacher.email, {
+              teacherName: `${teacher.first_name} ${teacher.last_name}`,
+              className: cls.class_code,
+              date: today
+            });
+            missingReminders.push({
+              class_code: cls.class_code,
+              teacher_email: teacher.email,
+              status: 'Reminder Sent'
+            });
+          } else {
+            missingReminders.push({
+              class_code: cls.class_code,
+              status: 'Teacher Not Found or No Email'
+            });
+          }
+        } else {
+          missingReminders.push({
+            class_code: cls.class_code,
+            status: 'No Teacher Assigned'
+          });
+        }
+      }
+    }
+
+    res.json({
+      success: true,
+      message: `Checked ${activeClasses.length} classes.`,
+      missing_count: missingReminders.length,
+      details: missingReminders
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+// Teacher checks their own missing attendance
+const checkMyMissingAttendance = async (req, res) => {
+  try {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const teacherCode = req.user.teacher_code;
+
+    if (!teacherCode) {
+      return res.status(400).json({ success: false, message: 'Teacher code not found' });
+    }
+
+    // 1. Get classes assigned to this teacher
+    const teacherClasses = await Class.find({ 
+      teacher_code: teacherCode, 
+      is_delete: false, 
+      is_active: true 
+    });
+
+    if (teacherClasses.length === 0) {
+      return res.json({ success: true, has_missing: false, missing_classes: [] });
+    }
+
+    // 2. Check attendance for these classes today
+    const classCodes = teacherClasses.map(c => c.class_code);
+    const todayAttendance = await Attendance.find({
+      class_code: { $in: classCodes },
+      date: today,
+      is_delete: false
+    }).select('class_code');
+
+    const markedCodes = new Set(todayAttendance.map(a => a.class_code));
+    const missingClasses = teacherClasses
+      .filter(c => !markedCodes.has(c.class_code))
+      .map(c => c.class_code);
+
+    res.json({
+      success: true,
+      has_missing: missingClasses.length > 0,
+      missing_classes: missingClasses
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+module.exports = { 
+  markAttendance, 
+  getAttendance, 
+  getStudentAttendance, 
+  deleteAttendance, 
+  getClassMonthSummary, 
+  getDailyAttendance,
+  checkMissingAttendance,
+  checkMyMissingAttendance
+};

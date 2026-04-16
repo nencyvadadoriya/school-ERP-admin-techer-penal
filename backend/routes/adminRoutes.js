@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const {
   registerAdmin, loginAdmin, getAllAdmins, getAdminById, updateAdmin, deleteAdmin,
+  forgotPassword, verifyOTPAndResetPassword,
 } = require('../controllers/adminController');
 const { auth, adminAuth } = require('../middleware/auth');
 const upload = require('../middleware/upload');
@@ -11,6 +12,8 @@ const Subject = require('../models/Subject');
 // Auth
 router.post('/register', upload.single('profile_image'), registerAdmin);
 router.post('/login', loginAdmin);
+router.post('/forgot-password', forgotPassword);
+router.post('/verify-otp', verifyOTPAndResetPassword);
 
 // Admin CRUD (list)
 router.get('/', auth, adminAuth, getAllAdmins);

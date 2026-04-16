@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { FaCalendarCheck, FaClipboardList, FaMoneyBillWave, FaClock } from 'react-icons/fa';
-import { dashboardAPI } from '../../services/api';
+import { toast } from 'react-toastify';
+import { dashboardAPI, homeworkAPI } from '../../services/api';
 import StatCard from '../../components/StatCard';
 import Spinner from '../../components/Spinner';
 import { useAuth } from '../../context/AuthContext';
@@ -15,6 +16,24 @@ const StudentDashboard: React.FC = () => {
       .then(r => setData(r.data.data))
       .catch(console.error)
       .finally(() => setLoading(false));
+
+    // Check for new homework assigned today
+    homeworkAPI.checkMyHomework()
+      .then(r => {
+        if (r.data.success && r.data.has_new_homework) {
+          r.data.homework.forEach((hw: any) => {
+            toast.info(`New Homework: ${hw.title} assigned by ${hw.teacher_name} for ${hw.subject_code}`, {
+              position: "top-right",
+              autoClose: 6000,
+              hideProgressBar: false,
+              closeOnClick: true,
+              pauseOnHover: true,
+              draggable: true,
+            });
+          });
+        }
+      })
+      .catch(err => console.error('Error checking new homework:', err));
   }, []);
 
   if (loading) return <Spinner />;

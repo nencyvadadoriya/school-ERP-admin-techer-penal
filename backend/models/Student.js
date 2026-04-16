@@ -53,6 +53,10 @@ const studentSchema = new mongoose.Schema({
     enum: ['A', 'B', 'C', 'D'],
     trim: true,
   },
+  division: {
+    type: String,
+    trim: true,
+  },
   class_code: {
     type: String,
     trim: true,
@@ -97,5 +101,12 @@ const studentSchema = new mongoose.Schema({
 studentSchema.index({ gr_number: 1 });
 studentSchema.index({ class_code: 1 });
 studentSchema.index({ is_delete: 1 });
+studentSchema.index(
+  { std: 1, class_name: 1, roll_no: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { is_delete: false },
+  }
+);
 
 module.exports = mongoose.model('Student', studentSchema);

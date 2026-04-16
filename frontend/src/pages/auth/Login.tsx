@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import { adminAPI, teacherAPI } from '../../services/api';
+import { adminAPI, teacherAPI, studentAPI } from '../../services/api';
 import { toast } from 'react-toastify';
-import { FaUserShield, FaChalkboardTeacher } from 'react-icons/fa';
+import { FaUserShield, FaChalkboardTeacher, FaUserGraduate, FaKey } from 'react-icons/fa';
 
 const Login: React.FC = () => {
   const [userType, setUserType] = useState<'admin' | 'teacher'>('admin');
@@ -55,7 +55,9 @@ const Login: React.FC = () => {
         navigate('/teacher/dashboard');
       }
     } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Login failed');
+      console.error('Login error:', error);
+      const errorMessage = error.response?.data?.message || error.message || 'Login failed';
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -76,7 +78,7 @@ const Login: React.FC = () => {
             <button
               type="button"
               onClick={() => setUserType('admin')}
-              className={`flex flex-col items-center p-2 rounded-lg border-2 transition-all $${
+              className={`flex flex-col items-center p-2 rounded-lg border-2 transition-all ${
                 userType === 'admin'
                   ? 'border-primary-500 bg-primary-50 text-primary-600'
                   : 'border-gray-200 hover:border-gray-300'
@@ -88,7 +90,7 @@ const Login: React.FC = () => {
             <button
               type="button"
               onClick={() => setUserType('teacher')}
-              className={`flex flex-col items-center p-2 rounded-lg border-2 transition-all $${
+              className={`flex flex-col items-center p-2 rounded-lg border-2 transition-all ${
                 userType === 'teacher'
                   ? 'border-primary-500 bg-primary-50 text-primary-600'
                   : 'border-gray-200 hover:border-gray-300'

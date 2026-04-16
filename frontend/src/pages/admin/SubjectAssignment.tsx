@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { teacherAPI, classAPI, subjectAPI } from '../../services/api';
 import { toast } from 'react-toastify';
-import { FaSave, FaTrash, FaPlus, FaChalkboardTeacher, FaBook, FaLayerGroup, FaHistory, FaSearch } from 'react-icons/fa';
+import { FaSave, FaTrash, FaPlus, FaChalkboardTeacher, FaBook, FaLayerGroup, FaHistory, FaSearch, FaEdit } from 'react-icons/fa';
 import Spinner from '../../components/Spinner';
 
 const SubjectAssignment: React.FC = () => {
@@ -14,7 +14,7 @@ const SubjectAssignment: React.FC = () => {
   // Selection states
   const [selectedTeacherId, setSelectedTeacherId] = useState('');
   const [selectedMedium, setSelectedMedium] = useState('');
-  const [selectedClassId, setSelectedClassId] = useState('');
+  const [selectedClassIds, setSelectedClassIds] = useState<string[]>([]);
   
   // Search state for history
   const [historySearch, setHistorySearch] = useState('');
@@ -56,33 +56,42 @@ const SubjectAssignment: React.FC = () => {
   }, [selectedTeacherId, teachers]);
 
   const handleAddAssignment = (subject: any) => {
-    if (!selectedTeacherId || !selectedClassId || !selectedMedium) {
-      toast.warn('Please select Teacher, Medium and Class first');
+    if (!selectedTeacherId || selectedClassIds.length === 0 || !selectedMedium) {
+      toast.warn('Please select Teacher, Medium and at least one Class first');
       return;
     }
 
-    const selectedClass = classes.find(c => c._id === selectedClassId);
-    
-    // Check if already assigned
-    const exists = assignments.find(a => 
-      a.subject_id === subject._id && 
-      a.class_id === selectedClassId
-    );
+    const newAssignments = [...assignments];
+    let addedCount = 0;
 
-    if (exists) {
-      toast.info('This subject is already assigned to this teacher for this class');
-      return;
+    selectedClassIds.forEach(classId => {
+      const selectedClass = classes.find(c => c._id === classId);
+      if (!selectedClass) return;
+
+      // Check if already assigned
+      const exists = assignments.find(a => 
+        a.subject_id === subject._id && 
+        a.class_id === classId
+      );
+
+      if (!exists) {
+        newAssignments.push({
+          subject_id: subject._id,
+          subject_name: subject.subject_name,
+          class_id: classId,
+          class_name: `Std ${selectedClass.standard} - Div ${selectedClass.division}`,
+          medium: selectedMedium
+        });
+        addedCount++;
+      }
+    });
+
+    if (addedCount > 0) {
+      setAssignments(newAssignments);
+      toast.success(`Assigned ${subject.subject_name} to ${addedCount} class(es)`);
+    } else {
+      toast.info('This subject is already assigned to all selected classes');
     }
-
-    const newAssignment = {
-      subject_id: subject._id,
-      subject_name: subject.subject_name,
-      class_id: selectedClassId,
-      class_name: `Std ${selectedClass.standard} - Div ${selectedClass.division}`,
-      medium: selectedMedium
-    };
-
-    setAssignments([...assignments, newAssignment]);
   };
 
   const handleRemoveAssignment = (index: number) => {
@@ -103,6 +112,11 @@ const SubjectAssignment: React.FC = () => {
         subject_assignments: assignments
       });
       toast.success('Assignments saved successfully');
+      // Clear form after successful save
+      setSelectedTeacherId('');
+      setSelectedMedium('');
+      setSelectedClassIds([]);
+      setAssignments([]);
       // Update local teachers list to reflect changes
       fetchInitialData();
     } catch (err) {
@@ -112,16 +126,69 @@ const SubjectAssignment: React.FC = () => {
     }
   };
 
-  // Flatten all teacher assignments for the history table
+  const handleDeleteGroup = async (teacherId: string, subjectId: string, medium: string) => {
+    if (!window.confirm('Are you sure you want to delete all assignments for this subject for this teacher?')) {
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const teacher = teachers.find(t => t._id === teacherId);
+      if (!teacher) return;
+
+      const updatedAssignments = (teacher.subject_assignments || []).filter((a: any) => 
+        !(a.subject_id === subjectId && a.medium === medium)
+      );
+
+      await teacherAPI.assignSubjects(teacherId, {
+        subject_assignments: updatedAssignments
+      });
+
+      toast.success('Assignments deleted successfully');
+      fetchInitialData();
+    } catch (err) {
+      toast.error('Error deleting assignments');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleClearForm = () => {
+    setSelectedTeacherId('');
+    setSelectedMedium('');
+    setSelectedClassIds([]);
+    setAssignments([]);
+    toast.info('Form cleared');
+  };
+
+  // Grouped assignments for history
   const allAssignments = teachers.reduce((acc: any[], teacher) => {
     if (teacher.subject_assignments && Array.isArray(teacher.subject_assignments)) {
+      // Temporary map to group by subject_id and medium
+      const teacherGroups: { [key: string]: any } = {};
+
       teacher.subject_assignments.forEach((assignment: any) => {
-        acc.push({
-          ...assignment,
-          teacher_name: `${teacher.first_name} ${teacher.last_name}`,
-          teacher_code: teacher.teacher_code,
-          teacher_id: teacher._id
-        });
+        const key = `${assignment.subject_id}_${assignment.medium}`;
+        if (!teacherGroups[key]) {
+          teacherGroups[key] = {
+            subject_id: assignment.subject_id,
+            subject_name: assignment.subject_name,
+            medium: assignment.medium,
+            teacher_name: `${teacher.first_name} ${teacher.last_name}`,
+            teacher_code: teacher.teacher_code,
+            teacher_id: teacher._id,
+            classes: [assignment.class_name]
+          };
+        } else {
+          if (!teacherGroups[key].classes.includes(assignment.class_name)) {
+            teacherGroups[key].classes.push(assignment.class_name);
+          }
+        }
+      });
+
+      // Push grouped assignments to main accumulator
+      Object.values(teacherGroups).forEach(group => {
+        acc.push(group);
       });
     }
     return acc;
@@ -130,18 +197,20 @@ const SubjectAssignment: React.FC = () => {
   const filteredHistory = allAssignments.filter(a => 
     a.teacher_name.toLowerCase().includes(historySearch.toLowerCase()) ||
     a.subject_name.toLowerCase().includes(historySearch.toLowerCase()) ||
-    a.class_name.toLowerCase().includes(historySearch.toLowerCase()) ||
+    a.classes.some((c: string) => c.toLowerCase().includes(historySearch.toLowerCase())) ||
     a.teacher_code.toLowerCase().includes(historySearch.toLowerCase())
   );
 
   if (loading) return <Spinner />;
 
   const filteredClasses = classes.filter(c => !selectedMedium || c.medium === selectedMedium);
-  const selectedClass = classes.find(c => c._id === selectedClassId);
+  const firstSelectedClass = classes.find(c => c._id === selectedClassIds[0]);
   const filteredSubjects = subjects.filter(s => {
     if (!selectedMedium || s.medium !== selectedMedium) return false;
-    if (!selectedClass) return false;
-    return String(s.std) === String(selectedClass.standard);
+    if (!firstSelectedClass) return false;
+    // Show subjects for the standard of the first selected class
+    // (Assuming all selected classes should be of same standard for bulk assignment)
+    return String(s.std) === String(firstSelectedClass.standard);
   });
 
   return (
@@ -197,7 +266,7 @@ const SubjectAssignment: React.FC = () => {
                   value={selectedMedium}
                   onChange={(e) => {
                     setSelectedMedium(e.target.value);
-                    setSelectedClassId('');
+                    setSelectedClassIds([]);
                   }}
                   className="input-field"
                 >
@@ -207,33 +276,61 @@ const SubjectAssignment: React.FC = () => {
                 </select>
               </div>
               <div>
-                <label className="text-xs font-medium text-gray-500 mb-1 block">Class</label>
-                <select
-                  value={selectedClassId}
-                  onChange={(e) => setSelectedClassId(e.target.value)}
-                  className="input-field"
-                  disabled={!selectedMedium}
-                >
-                  <option value="">Select Class</option>
-                  {filteredClasses.map(c => (
-                    <option key={c._id} value={c._id}>
-                      Std {c.standard} - Div {c.division} ({c.shift})
-                    </option>
-                  ))}
-                </select>
+                <label className="text-xs font-medium text-gray-500 mb-1 block text-blue-600 font-bold">Select Classes (Multiple)</label>
+                <div className="max-h-48 overflow-y-auto border rounded-lg p-2 space-y-2 bg-gray-50">
+                  {filteredClasses.length === 0 ? (
+                    <p className="text-xs text-gray-400 text-center py-2">No classes found for this medium</p>
+                  ) : (
+                    filteredClasses.map(c => (
+                      <label key={c._id} className="flex items-center gap-2 p-1.5 hover:bg-white rounded cursor-pointer transition-colors border border-transparent hover:border-gray-200">
+                        <input
+                          type="checkbox"
+                          checked={selectedClassIds.includes(c._id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedClassIds([...selectedClassIds, c._id]);
+                            } else {
+                              setSelectedClassIds(selectedClassIds.filter(id => id !== c._id));
+                            }
+                          }}
+                          className="rounded text-primary-600 focus:ring-primary-500"
+                        />
+                        <span className="text-sm text-gray-700">
+                          Std {c.standard} - Div {c.division} ({c.shift})
+                        </span>
+                      </label>
+                    ))
+                  )}
+                </div>
+                {selectedClassIds.length > 0 && (
+                  <button 
+                    onClick={() => setSelectedClassIds([])}
+                    className="text-[10px] text-red-500 hover:text-red-700 mt-1 font-medium"
+                  >
+                    Clear All Selection
+                  </button>
+                )}
               </div>
             </div>
           </div>
 
           {selectedTeacherId && (
-            <button
-              onClick={handleSave}
-              disabled={submitting}
-              className="btn-primary w-full py-3 flex items-center justify-center gap-2"
-            >
-              <FaSave />
-              {submitting ? 'Saving...' : 'Save All Assignments'}
-            </button>
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={handleSave}
+                disabled={submitting}
+                className="btn-primary w-full py-3 flex items-center justify-center gap-2"
+              >
+                <FaSave />
+                {submitting ? 'Saving...' : 'Save All Assignments'}
+              </button>
+              <button
+                onClick={handleClearForm}
+                className="btn-secondary w-full py-2 text-sm"
+              >
+                Clear Form / Cancel
+              </button>
+            </div>
           )}
         </div>
 
@@ -241,14 +338,21 @@ const SubjectAssignment: React.FC = () => {
         <div className="lg:col-span-2 space-y-6">
           {/* Available Subjects */}
           <div className="card p-4">
-            <h2 className="font-semibold mb-4 flex items-center gap-2">
-              <FaBook className="text-green-500" />
-              Step 3: Choose Subjects to Assign
+            <h2 className="font-semibold mb-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <FaBook className="text-green-500" />
+                Step 3: Choose Subjects to Assign
+              </div>
+              {selectedClassIds.length > 0 && (
+                <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-bold">
+                  Assigning to {selectedClassIds.length} Class(es)
+                </span>
+              )}
             </h2>
             
-            {!selectedClassId ? (
+            {selectedClassIds.length === 0 ? (
               <div className="text-center py-12 bg-gray-50 rounded-lg border-2 border-dashed">
-                <p className="text-gray-500">Please select Medium and Class to see available subjects</p>
+                <p className="text-gray-500">Please select Medium and at least one Class to see available subjects</p>
               </div>
             ) : filteredSubjects.length === 0 ? (
               <div className="text-center py-12 bg-gray-50 rounded-lg border-2 border-dashed">
@@ -356,7 +460,7 @@ const SubjectAssignment: React.FC = () => {
                 <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Subject</th>
                 <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Class</th>
                 <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Medium</th>
-                <th className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Action</th>
+                <th className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
@@ -374,7 +478,15 @@ const SubjectAssignment: React.FC = () => {
                       <div className="text-xs text-gray-500 font-mono">{assignment.teacher_code}</div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">{assignment.subject_name}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">{assignment.class_name}</td>
+                    <td className="px-6 py-4 text-sm text-gray-600">
+                      <div className="flex flex-wrap gap-1">
+                        {assignment.classes.map((cls: string, i: number) => (
+                          <span key={i} className="bg-gray-100 px-2 py-0.5 rounded text-[11px] border border-gray-200">
+                            {cls}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${
                         assignment.medium === 'English' ? 'bg-indigo-100 text-indigo-700' : 'bg-orange-100 text-orange-700'
@@ -383,12 +495,25 @@ const SubjectAssignment: React.FC = () => {
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
-                      <button
-                        onClick={() => setSelectedTeacherId(assignment.teacher_id)}
-                        className="text-primary-600 hover:text-primary-900 font-bold"
-                      >
-                        Edit
-                      </button>
+                      <div className="flex justify-end gap-3">
+                        <button
+                          onClick={() => {
+                            setSelectedTeacherId(assignment.teacher_id);
+                            // Set medium to match for editing
+                            setSelectedMedium(assignment.medium);
+                          }}
+                          className="text-primary-600 hover:text-primary-900 font-bold"
+                        >
+                          <FaEdit size={14} />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteGroup(assignment.teacher_id, assignment.subject_id, assignment.medium)}
+                          className="text-red-600 hover:text-red-900 font-bold"
+                          title="Delete all classes for this subject"
+                        >
+                          <FaTrash size={14} />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))

@@ -23,34 +23,40 @@ api.interceptors.response.use(
 );
 
 export const adminAPI = {
-  register: (data) => api.post('/admin/register', data),
+  register: (data) => api.post('/admin/register', data, { headers: { 'Content-Type': 'multipart/form-data' } }),
   login: (data) => api.post('/admin/login', data),
+  forgotPassword: (data: { email: string }) => api.post('/admin/forgot-password', data),
+  verifyOTP: (data: { email: string; otp: string; newPassword?: string }) => api.post('/admin/verify-otp', data),
   getAll: () => api.get('/admin'),
   getById: (id) => api.get(`/admin/${id}`),
-  update: (id, data) => api.patch(`/admin/${id}`, data),
-  updateImage: (id, formData) => api.patch(`/admin/${id}`, formData),
+  update: (id, data) => api.patch(`/admin/${id}`, data, { headers: { 'Content-Type': 'multipart/form-data' } }),
+  updateImage: (id, formData) => api.patch(`/admin/${id}`, formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
   delete: (id) => api.delete(`/admin/${id}`),
 };
 
 export const teacherAPI = {
-  register: (data) => api.post('/teacher/register', data),
+  register: (data) => api.post('/teacher/register', data, { headers: { 'Content-Type': 'multipart/form-data' } }),
   login: (data) => api.post('/teacher/login', data),
+  forgotPassword: (data: { email: string }) => api.post('/teacher/forgot-password', data),
+  verifyOTP: (data: { email: string; otp: string; newPassword?: string }) => api.post('/teacher/verify-otp', data),
   getAll: () => api.get('/teacher'),
   getById: (id) => api.get(`/teacher/${id}`),
-  update: (id, data) => api.patch(`/teacher/${id}`, data),
-  updateImage: (id, formData) => api.patch(`/teacher/${id}`, formData),
+  update: (id, data) => api.patch(`/teacher/${id}`, data, { headers: { 'Content-Type': 'multipart/form-data' } }),
+  updateImage: (id, formData) => api.patch(`/teacher/${id}`, formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
   delete: (id) => api.delete(`/teacher/${id}`),
   assignSubjects: (id, data) => api.post(`/teacher/${id}/assign-subjects`, data),
 };
 
 export const studentAPI = {
-  register: (data) => api.post('/student/register', data),
+  register: (data) => api.post('/student/register', data, { headers: { 'Content-Type': 'multipart/form-data' } }),
   bulkCreate: (data) => api.post('/student/bulk', data),
   login: (data) => api.post('/student/login', data),
   getAll: (params?: any) => api.get('/student', { params }),
   getById: (id) => api.get(`/student/${id}`),
-  update: (id, data) => api.patch(`/student/${id}`, data),
-  updateImage: (id, formData) => api.patch(`/student/${id}`, formData),
+  getNextRollNumber: (params: { std: string; class_name: string; shift?: string; medium?: string; stream?: string }) => 
+    api.get('/student/get-next-roll-number', { params }),
+  update: (id, data) => api.patch(`/student/${id}`, data, { headers: { 'Content-Type': 'multipart/form-data' } }),
+  updateImage: (id, formData) => api.patch(`/student/${id}`, formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
   delete: (id) => api.delete(`/student/${id}`),
 };
 
@@ -82,6 +88,8 @@ export const attendanceAPI = {
   getStudentSummary: (params?: any) => api.get('/attendance/student', { params }),
   getClassMonthSummary: (params?: any) => api.get('/attendance/class-summary', { params }),
   getDaily: (params?: any) => api.get('/attendance/daily', { params }),
+  checkMissingAttendance: () => api.get('/attendance/check-missing-attendance'),
+  checkMyMissingAttendance: () => api.get('/attendance/check-my-missing-attendance'),
   delete: (id) => api.delete(`/attendance/${id}`),
 };
 
@@ -89,6 +97,7 @@ export const homeworkAPI = {
   create: (data) => api.post('/homework', data),
   getAll: (params?: any) => api.get('/homework', { params }),
   getById: (id) => api.get(`/homework/${id}`),
+  checkMyHomework: () => api.get('/homework/check-my-homework'),
   update: (id, data) => api.patch(`/homework/${id}`, data),
   delete: (id) => api.delete(`/homework/${id}`),
 };
@@ -104,12 +113,26 @@ export const examAPI = {
 };
 
 export const feesAPI = {
-  create: (data) => api.post('/fees', data),
-  getAll: (params?: any) => api.get('/fees', { params }),
-  getById: (id) => api.get(`/fees/${id}`),
-  update: (id, data) => api.patch(`/fees/${id}`, data),
-  delete: (id) => api.delete(`/fees/${id}`),
-  getSummary: () => api.get('/fees/summary'),
+  create: (data) => api.post('/fees', data, { headers: { 'X-Fees-Gate-Token': sessionStorage.getItem('fees_gate_token') || '' } }),
+  getAll: (params?: any) => api.get('/fees', { params, headers: { 'X-Fees-Gate-Token': sessionStorage.getItem('fees_gate_token') || '' } }),
+  getById: (id) => api.get(`/fees/${id}`, { headers: { 'X-Fees-Gate-Token': sessionStorage.getItem('fees_gate_token') || '' } }),
+  update: (id, data) => api.patch(`/fees/${id}`, data, { headers: { 'X-Fees-Gate-Token': sessionStorage.getItem('fees_gate_token') || '' } }),
+  delete: (id) => api.delete(`/fees/${id}`, { headers: { 'X-Fees-Gate-Token': sessionStorage.getItem('fees_gate_token') || '' } }),
+  getSummary: () => api.get('/fees/summary', { headers: { 'X-Fees-Gate-Token': sessionStorage.getItem('fees_gate_token') || '' } }),
+};
+
+export const feesPageSecurityAPI = {
+  status: () => api.get('/fees-page-security/status'),
+  setPassword: (data: { password: string }) => api.post('/fees-page-security/set-password', data),
+  verify: (data: { password: string }) => api.post('/fees-page-security/verify', data),
+  changePassword: (data: { currentPassword: string; newPassword: string }) => api.post('/fees-page-security/change-password', data),
+  requestReset: (data: { email: string }) => api.post('/fees-page-security/reset/request', data),
+  confirmReset: (data: { email: string; code: string; newPassword: string }) => api.post('/fees-page-security/reset/confirm', data),
+};
+
+export const auditAPI = {
+  getFees: (params?: any) => api.get('/audit/fees', { params }),
+  recordFeesPageView: () => api.post('/audit/fees/view'),
 };
 
 export const noticeAPI = {
@@ -130,9 +153,11 @@ export const leaveAPI = {
   applyStudent: (data) => api.post('/leave/student', data),
   getStudentLeaves: (params?: any) => api.get('/leave/student', { params }),
   updateStudentLeave: (id, data) => api.patch(`/leave/student/${id}`, data),
+  deleteStudentLeave: (id) => api.delete(`/leave/student/${id}`),
   applyTeacher: (data) => api.post('/leave/teacher', data),
   getTeacherLeaves: (params?: any) => api.get('/leave/teacher', { params }),
   updateTeacherLeave: (id, data) => api.patch(`/leave/teacher/${id}`, data),
+  deleteTeacherLeave: (id) => api.delete(`/leave/teacher/${id}`),
 };
 
 export const timetableAPI = {
@@ -140,6 +165,12 @@ export const timetableAPI = {
   deleteEntry: (data) => api.delete('/timetable/entry', { data }),
   getAll: () => api.get('/timetable'),
   getByClass: (class_code) => api.get(`/timetable/${class_code}`),
+};
+
+export const shiftBreakTimeAPI = {
+  upsert: (data: { shift: string; break_start_time: string; break_end_time: string }) => api.post('/shift-break-time', data),
+  getAll: () => api.get('/shift-break-time'),
+  getByShift: (shift: string) => api.get(`/shift-break-time/${shift}`),
 };
 
 export const dashboardAPI = {

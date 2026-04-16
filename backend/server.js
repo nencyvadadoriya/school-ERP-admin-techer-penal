@@ -15,6 +15,7 @@ const attendanceRoutes = require('./routes/attendanceRoutes');
 const homeworkRoutes = require('./routes/homeworkRoutes');
 const examRoutes = require('./routes/examRoutes');
 const feesRoutes = require('./routes/feesRoutes');
+const feesPageSecurityRoutes = require('./routes/feesPageSecurityRoutes');
 const noticeRoutes = require('./routes/noticeRoutes');
 const eventRoutes = require('./routes/eventRoutes');
 const leaveRoutes = require('./routes/leaveRoutes');
@@ -22,6 +23,8 @@ const timetableRoutes = require('./routes/timetableRoutes');
 const dashboardRoutes = require('./routes/dashboardRoutes');
 const classRoutes = require('./routes/classRoutes');
 const subjectRoutes = require('./routes/subjectRoutes');
+const shiftBreakTimeRoutes = require('./routes/shiftBreakTimeRoutes');
+const auditRoutes = require('./routes/auditRoutes');
 
 // Allow the frontend origin from env or reflect the request origin in dev (safe for local development)
 app.use(cors({ origin: process.env.FRONTEND_URL || true, credentials: true }));
@@ -37,6 +40,7 @@ app.use('/api/attendance', attendanceRoutes);
 app.use('/api/homework', homeworkRoutes);
 app.use('/api/exam', examRoutes);
 app.use('/api/fees', feesRoutes);
+app.use('/api/fees-page-security', feesPageSecurityRoutes);
 app.use('/api/notice', noticeRoutes);
 app.use('/api/event', eventRoutes);
 app.use('/api/leave', leaveRoutes);
@@ -44,6 +48,8 @@ app.use('/api/timetable', timetableRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/class', classRoutes);
 app.use('/api/subject', subjectRoutes);
+app.use('/api/shift-break-time', shiftBreakTimeRoutes);
+app.use('/api/audit', auditRoutes);
 
 
 

@@ -12,35 +12,104 @@ const Notice = require('../models/Notice');
 
 const getAdminDashboard = async (req, res) => {
   try {
-    const [totalStudents, totalTeachers, totalClasses, pendingStudentLeaves, pendingTeacherLeaves, feesDocs] = await Promise.all([
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const [
+      totalStudents,
+      totalTeachers,
+      totalClasses,
+      pendingStudentLeaves,
+      pendingTeacherLeaves,
+      feesDocs,
+      allAttendance,
+      students,
+      teachers,
+      classes,
+    ] = await Promise.all([
       Student.countDocuments({ is_delete: false, is_active: true }),
       Teacher.countDocuments({ is_delete: false, is_active: true }),
       Class.countDocuments({ is_delete: false }),
       StudentLeave.countDocuments({ status: 'Pending', is_delete: false }),
       TeacherLeave.countDocuments({ status: 'Pending', is_delete: false }),
       Fees.find({ is_delete: false }),
+      Attendance.find({ is_delete: false }).sort({ date: -1 }).limit(30),
+      Student.find({ is_delete: false, is_active: true }).select('gender'),
+      Teacher.find({ is_delete: false, is_active: true }).select('name'),
+      Class.find({ is_delete: false }).select('class_name standard division teacher_code'),
     ]);
 
-    const feesCollected = feesDocs.reduce((s, f) => s + f.amount_paid, 0);
-    const feesPending = feesDocs.reduce((s, f) => s + (f.total_amount - f.amount_paid), 0);
+    const feesCollected = feesDocs.reduce((s, f) => s + (f.amount_paid || 0), 0);
+    const feesPending = feesDocs.reduce((s, f) => s + ((f.total_amount || 0) - (f.amount_paid || 0)), 0);
 
-    // Today attendance %
-    const today = new Date(); today.setHours(0,0,0,0);
-    const todayAtt = await Attendance.find({ date: { $gte: today }, is_delete: false });
+    const todayAtt = allAttendance.filter(a => a.date >= today && a.date < tomorrow);
     let present = 0, attTotal = 0;
-    todayAtt.forEach(a => { a.records.forEach(r => { attTotal++; if (r.status === 'Present' || r.status === 'Late') present++; }); });
+    todayAtt.forEach(a => {
+      a.records.forEach(r => {
+        attTotal++;
+        if (r.status === 'Present' || r.status === 'Late') present++;
+      });
+    });
     const attendancePercentage = attTotal > 0 ? Math.round((present / attTotal) * 100) : 0;
 
-    res.json({
+    const last7Days = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(today);
+      d.setDate(d.getDate() - i);
+      const nextD = new Date(d);
+      nextD.setDate(nextD.getDate() + 1);
+      
+      const dayAtt = allAttendance.filter(a => a.date >= d && a.date < nextD);
+      let dayPresent = 0, dayAbsent = 0;
+      dayAtt.forEach(a => {
+        a.records.forEach(r => {
+          if (r.status === 'Present' || r.status === 'Late') dayPresent++;
+          else dayAbsent++;
+        });
+      });
+      last7Days.push({
+        name: d.toLocaleDateString('en-US', { weekday: 'short' }),
+        present: dayPresent,
+        absent: dayAbsent
+      });
+    }
+
+    const genderData = [
+      { name: 'Boys', value: students.filter(s => s.gender === 'Male').length, color: '#3b82f6' },
+      { name: 'Girls', value: students.filter(s => s.gender === 'Female').length, color: '#ec489a' },
+    ];
+
+    const teacherWorkload = teachers.map(t => {
+      const teacherClasses = classes.filter(c => c.teacher_code === t.teacher_code);
+      return {
+        teacher: t.name,
+        classes: teacherClasses.length,
+        students: 0 
+      };
+    }).slice(0, 5);
+
+    return res.json({
       success: true,
       data: {
-        totalStudents, totalTeachers, totalClasses,
+        totalStudents,
+        totalTeachers,
+        totalClasses,
         attendancePercentage,
         pendingLeaves: pendingStudentLeaves + pendingTeacherLeaves,
-        feesCollected, feesPending,
+        feesCollected,
+        feesPending,
+        charts: {
+          weeklyAttendance: last7Days,
+          genderDistribution: genderData,
+          teacherWorkload: teacherWorkload
+        }
       }
     });
-  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+  } catch (e) {
+    return res.status(500).json({ success: false, message: e.message });
+  }
 };
 
 const getTeacherDashboard = async (req, res) => {
@@ -50,59 +119,8 @@ const getTeacherDashboard = async (req, res) => {
     const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
     const next2Days = new Date(today); next2Days.setDate(next2Days.getDate() + 2);
 
-    // Get classes assigned to this teacher using teacher_code OR from teacher's assigned_class array
-    const teacher = await Teacher.findOne({ teacher_code, is_delete: false }).lean();
-    console.log('Teacher found for dashboard:', { teacher_code, hasTeacher: !!teacher, assigned: teacher?.assigned_class });
-    const assignedClassCodes = Array.isArray(teacher?.assigned_class) ? teacher.assigned_class.filter(Boolean) : [];
-    const subjectAssignments = Array.isArray(teacher?.subject_assignments) ? teacher.subject_assignments : [];
-    
-    // Extract class_codes from subject assignments too
-    const subjectAssignedClassCodes = [];
-    const classIdsFromSA = subjectAssignments.map(sa => sa.class_id).filter(Boolean);
-    if (classIdsFromSA.length > 0) {
-      const clsFromSA = await Class.find({ _id: { $in: classIdsFromSA }, is_delete: false }).select('class_code').lean();
-      clsFromSA.forEach(c => { if(c.class_code) subjectAssignedClassCodes.push(c.class_code); });
-    }
-
-    const myClassesDocs = await Class.find({
-      $or: [
-        { teacher_code, is_delete: false },
-        { class_code: { $in: [...assignedClassCodes, ...subjectAssignedClassCodes] }, is_delete: false }
-      ]
-    }).lean();
-
-    // Ensure we always return something meaningful even if Class doc is missing for an assigned code
-    const myClassesByCode = new Map();
-    myClassesDocs.forEach((c) => {
-      if (c?.class_code) myClassesByCode.set(String(c.class_code), c);
-    });
-    assignedClassCodes.forEach((code) => {
-      if (!myClassesByCode.has(String(code))) {
-        myClassesByCode.set(String(code), { class_code: String(code) });
-      }
-    });
-
-    const myClasses = Array.from(myClassesByCode.values());
-    const classCodes = Array.from(myClassesByCode.keys());
-
-    // Normalize codes to handle mismatches like "1A-English" vs "1-A-English" or "1-A" etc.
-    const normalize = (s) => String(s || '').trim();
-    const withHyphen = (code) => {
-      const m = String(code || '').match(/^(\d+)\s*-?\s*([A-Za-z])\b/);
-      if (!m) return String(code || '');
-      return `${m[1]}-${m[2].toUpperCase()}${String(code).slice(m[0].length)}`;
-    };
-    const withoutHyphen = (code) => {
-      const m = String(code || '').match(/^(\d+)\s*-?\s*([A-Za-z])\b/);
-      if (!m) return String(code || '');
-      return `${m[1]}${m[2].toUpperCase()}${String(code).slice(m[0].length)}`;
-    };
-    const expandedCodes = [...new Set(
-      classCodes
-        .map(normalize)
-        .filter(Boolean)
-        .flatMap((cc) => [cc, withHyphen(cc), withoutHyphen(cc)])
-    )];
+    const myClasses = await Class.find({ teacher_code, is_delete: false }).lean();
+    const classCodes = (myClasses || []).map((c) => String(c?.class_code || '')).filter(Boolean);
 
     const [upcomingExams, upcomingExamsNext2Days, homeworkGiven, myLeaves, pendingStudentLeaves] = await Promise.all([
       Exam.find({ 
@@ -120,50 +138,33 @@ const getTeacherDashboard = async (req, res) => {
       StudentLeave.countDocuments({ class_code: { $in: classCodes }, status: 'Pending', is_delete: false }),
     ]);
 
-    // Count students in any of the teacher's classes.
-    // We support both exact class_code matches and component matching (std/division).
-    const studentFilter = { is_delete: false, is_active: true };
-    const studentConditions = [];
+    let totalStudentsInClassesFinal = 0;
+    if (classCodes.length > 0) {
+      totalStudentsInClassesFinal = await Student.countDocuments({ 
+        class_code: { $in: classCodes }, 
+        is_delete: false, 
+        is_active: true 
+      });
 
-    // Exact matches for expanded codes
-    if (expandedCodes.length > 0) {
-      studentConditions.push({ class_code: { $in: expandedCodes } });
-    }
-
-    // Component matches (std and division)
-    myClasses.forEach(c => {
-      if (c.standard && c.division) {
-        studentConditions.push({
+      if (totalStudentsInClassesFinal === 0) {
+        const orConditions = myClasses.map(c => ({
           std: String(c.standard),
           $or: [
             { division: String(c.division) },
             { class_name: String(c.division) }
           ]
-        });
-      } else if (c.class_code) {
-        // Try to parse from code if standard/division missing in Class doc
-        const parts = String(c.class_code).split('-');
-        if (parts.length >= 3) {
-          studentConditions.push({
-            std: parts[1],
-            $or: [
-              { division: parts[2] },
-              { class_name: parts[2] }
-            ]
+        }));
+        
+        if (orConditions.length > 0) {
+          totalStudentsInClassesFinal = await Student.countDocuments({
+            $or: orConditions,
+            is_delete: false,
+            is_active: true
           });
         }
       }
-    });
-
-    if (studentConditions.length > 0) {
-      studentFilter.$or = studentConditions;
     }
 
-    const totalStudentsInClassesFinal = studentConditions.length > 0 
-      ? await Student.countDocuments(studentFilter)
-      : 0;
-
-    // Check if today's attendance was marked
     const todayAtt = await Attendance.find({ 
       class_code: { $in: classCodes }, 
       date: { $gte: today, $lt: tomorrow }, 
@@ -171,33 +172,141 @@ const getTeacherDashboard = async (req, res) => {
     });
     const attendancePending = classCodes.filter(cc => !todayAtt.find(a => a.class_code === cc)).length;
 
-    res.json({
+    const sixMonthsAgo = new Date();
+    sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 5);
+    sixMonthsAgo.setDate(1);
+    sixMonthsAgo.setHours(0,0,0,0);
+
+    const monthlyAttendanceTrend = await Attendance.aggregate([
+      { $match: { class_code: { $in: classCodes }, date: { $gte: sixMonthsAgo }, is_delete: false } },
+      {
+        $group: {
+          _id: { month: { $month: "$date" }, year: { $year: "$date" } },
+          totalPresent: {
+            $sum: {
+              $size: {
+                $filter: {
+                  input: "$records",
+                  as: "r",
+                  cond: { $in: ["$$r.status", ["Present", "Late"]] }
+                }
+              }
+            }
+          },
+          totalStudents: { $sum: { $size: "$records" } }
+        }
+      },
+      { $sort: { "_id.year": 1, "_id.month": 1 } }
+    ]);
+
+    const attendanceTrendData = monthlyAttendanceTrend.map(m => ({
+      month: new Date(m._id.year, m._id.month - 1).toLocaleString('default', { month: 'short' }),
+      percentage: m.totalStudents > 0 ? Math.round((m.totalPresent / m.totalStudents) * 100) : 0
+    }));
+
+    const studentsInClasses = await Student.find({ class_code: { $in: classCodes }, is_delete: false, is_active: true });
+    const classStrengthData = classCodes.map(cc => {
+      const clsStudents = studentsInClasses.filter(s => s.class_code === cc);
+      return {
+        class_code: cc,
+        total: clsStudents.length,
+        boys: clsStudents.filter(s => s.gender?.toLowerCase() === 'male').length,
+        girls: clsStudents.filter(s => s.gender?.toLowerCase() === 'female').length
+      };
+    });
+
+    const examResults = await ExamResult.find({ class_code: { $in: classCodes }, is_delete: false }).populate('exam_id');
+    const subjectPerformance = {};
+    examResults.forEach(r => {
+      const subj = r.exam_id?.subject_code || 'Unknown';
+      if (!subjectPerformance[subj]) subjectPerformance[subj] = { total: 0, count: 0 };
+      subjectPerformance[subj].total += (r.obtained_marks / r.total_marks) * 100;
+      subjectPerformance[subj].count += 1;
+    });
+    const subjectPerformanceData = Object.keys(subjectPerformance).map(s => ({
+      subject: s,
+      avgScore: Math.round(subjectPerformance[s].total / subjectPerformance[s].count)
+    }));
+
+    const studentPerformance = {};
+    examResults.forEach(r => {
+      if (!studentPerformance[r.gr_number]) {
+        studentPerformance[r.gr_number] = { name: r.student_name, totalPerc: 0, count: 0 };
+      }
+      studentPerformance[r.gr_number].totalPerc += (r.obtained_marks / r.total_marks) * 100;
+      studentPerformance[r.gr_number].count += 1;
+    });
+    const rankedStudents = Object.values(studentPerformance)
+      .map((s) => ({ name: s.name, avg: Math.round(s.totalPerc / s.count) }))
+      .sort((a, b) => b.avg - a.avg);
+    
+    const topStudents = rankedStudents.slice(0, 5);
+    const weakStudents = rankedStudents.slice(-5).reverse();
+
+    const homeworkStats = await Homework.aggregate([
+      { $match: { class_code: { $in: classCodes }, is_delete: false } },
+      { $group: { _id: "$subject_code", count: { $sum: 1 } } }
+    ]);
+    const homeworkData = homeworkStats.map(h => ({ subject: h._id, count: h.count }));
+
+    const fees = await Fees.find({ gr_number: { $in: studentsInClasses.map(s => s.gr_number) }, is_delete: false });
+    const feeStatusData = {
+      paid: fees.filter(f => f.status === 'Paid').length,
+      partial: fees.filter(f => f.status === 'Partial').length,
+      unpaid: fees.filter(f => f.status === 'Unpaid').length
+    };
+
+    const studentLeavesTodayCount = await StudentLeave.countDocuments({
+      class_code: { $in: classCodes },
+      status: 'Approved',
+      from_date: { $lte: today },
+      to_date: { $gte: today },
+      is_delete: false
+    });
+    const holidayImpactData = [
+      { name: 'Attending', value: totalStudentsInClassesFinal - studentLeavesTodayCount },
+      { name: 'On Leave', value: studentLeavesTodayCount }
+    ];
+
+    return res.json({
       success: true,
       data: { 
         myClasses, 
-        subjectAssignments,
         totalStudentsInClasses: totalStudentsInClassesFinal, 
         attendancePending, 
         homeworkGiven, 
         upcomingExams,
         upcomingExamsNext2Days,
         myLeaves,
-        pendingStudentLeaves
+        pendingStudentLeaves,
+        charts: {
+          attendanceTrend: attendanceTrendData,
+          classStrength: classStrengthData,
+          subjectPerformance: subjectPerformanceData,
+          topStudents,
+          weakStudents,
+          homeworkData,
+          feeStatus: feeStatusData,
+          holidayImpact: holidayImpactData
+        }
       }
     });
-  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+  } catch (e) { 
+    return res.status(500).json({ success: false, message: e.message }); 
+  }
 };
 
 const getStudentDashboard = async (req, res) => {
   try {
-    const student = await Student.findById(req.user.id).select('-password');
+    const gr_number = req.user.gr_number;
+    const student = await Student.findOne({ gr_number, is_delete: false });
     if (!student) return res.status(404).json({ success: false, message: 'Student not found' });
 
     const today = new Date(); today.setHours(0,0,0,0);
 
-    const [allAtt, pendingHomework, fees, upcomingExams, latestResults, notices] = await Promise.all([
+    const [allAtt, homework, fees, upcomingExams, latestResults, notices] = await Promise.all([
       Attendance.find({ class_code: student.class_code, is_delete: false }),
-      Homework.countDocuments({ class_code: student.class_code, due_date: { $gte: today }, is_delete: false }),
+      Homework.find({ class_code: student.class_code, is_delete: false }).sort({ createdAt: -1 }).limit(5),
       Fees.find({ gr_number: student.gr_number, is_delete: false }),
       Exam.find({ class_code: student.class_code, exam_date: { $gte: today }, is_delete: false }).limit(3).sort({ exam_date: 1 }),
       ExamResult.find({ gr_number: student.gr_number, is_delete: false }).populate('exam_id').sort({ createdAt: -1 }).limit(5),
@@ -206,17 +315,19 @@ const getStudentDashboard = async (req, res) => {
 
     let present = 0, total = 0;
     allAtt.forEach(a => {
-      const r = a.records.find(r => r.gr_number === student.gr_number);
+      const r = a.records.find(rec => rec.gr_number === student.gr_number);
       if (r) { total++; if (r.status === 'Present' || r.status === 'Late') present++; }
     });
     const attendancePercentage = total > 0 ? Math.round((present / total) * 100) : 0;
-    const feeDue = fees.filter(f => f.status !== 'Paid').reduce((s, f) => s + (f.total_amount - f.amount_paid), 0);
+    const feeDue = fees.filter(f => f.status !== 'Paid').reduce((s, f) => s + ((f.total_amount || 0) - (f.amount_paid || 0)), 0);
 
-    res.json({
+    return res.json({
       success: true,
-      data: { student, attendancePercentage, pendingHomework, feeDue, upcomingExams, latestResults, notices }
+      data: { student, attendancePercentage, pendingHomework: homework.length, feeDue, upcomingExams, latestResults, notices, recentHomework: homework }
     });
-  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+  } catch (e) { 
+    return res.status(500).json({ success: false, message: e.message }); 
+  }
 };
 
 module.exports = { getAdminDashboard, getTeacherDashboard, getStudentDashboard };

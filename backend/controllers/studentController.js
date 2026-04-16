@@ -12,6 +12,65 @@ const generateGRNumber = async () => {
   return `GR${year}${String(count + 1).padStart(5, '0')}`;
 };
 
+const getMaxRollNo = async ({ std, class_name, medium, shift }) => {
+  const filter = {
+    std: String(std),
+    class_name: String(class_name),
+    is_delete: false,
+  };
+
+  if (medium) filter.medium = String(medium);
+  if (shift) filter.shift = String(shift);
+
+  const rows = await Student.aggregate([
+    {
+      $match: filter,
+    },
+    {
+      $project: {
+        rollNoInt: {
+          $convert: {
+            input: '$roll_no',
+            to: 'int',
+            onError: 0,
+            onNull: 0,
+          },
+        },
+      },
+    },
+    {
+      $group: {
+        _id: null,
+        maxRoll: { $max: '$rollNoInt' },
+      },
+    },
+  ]);
+
+  return rows && rows[0] && typeof rows[0].maxRoll === 'number' ? rows[0].maxRoll : 0;
+};
+
+// Get Next Roll Number
+const getNextRollNumber = async (req, res) => {
+  try {
+    const { std, class_name, shift, medium, stream } = req.query;
+    
+    if (!std || !class_name) {
+      return res.status(400).json({ success: false, message: 'std and class_name are required' });
+    }
+
+    const maxRoll = await getMaxRollNo({ std, class_name, medium, shift });
+    const nextRollNo = maxRoll + 1;
+
+    res.json({
+      success: true,
+      nextRollNo: String(nextRollNo)
+    });
+  } catch (error) {
+    console.error('Error in getNextRollNumber:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 // Register Student
 const registerStudent = async (req, res) => {
   try {
@@ -39,11 +98,18 @@ const registerStudent = async (req, res) => {
     // Generate GR number
     const gr_number = await generateGRNumber();
 
-    // Ensure password exists; if not provided, auto-generate a temporary one
+    // Auto-calculate next roll number for the class (standard + division + medium + shift)
+    const maxRoll = await getMaxRollNo({ std, class_name, medium, shift });
+    const nextRollNo = maxRoll + 1;
+
+    // Ensure password exists; if not provided, default to 123456
     let plainPassword = password;
     if (!plainPassword) {
-      plainPassword = Math.random().toString(36).slice(-8);
+      plainPassword = '123456';
     }
+
+    // Default pin to 1234 if not provided
+    const studentPin = pin || '1234';
 
     // Hash password
     const hashedPassword = await bcrypt.hash(plainPassword, 10);
@@ -55,11 +121,15 @@ const registerStudent = async (req, res) => {
       profileImageUrl = uploadResult.url;
     }
 
+    // Generate class_code: std + division (class_name) + medium
+    const normalize = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const generatedClassCode = normalize(`${std}-${class_name || 'A'}-${medium || 'English'}`);
+
     // Create student
     const student = await Student.create({
       gr_number,
       std,
-      roll_no,
+      roll_no: String(nextRollNo),
       first_name,
       middle_name,
       last_name,
@@ -67,14 +137,15 @@ const registerStudent = async (req, res) => {
       phone1,
       phone2,
       address,
-      pin,
+      pin: studentPin,
       class_name,
-      class_code: class_code ? String(class_code).trim() : null,
+      division: class_name || 'A',
+      class_code: normalize(class_code) || generatedClassCode,
       password: hashedPassword,
       profile_image: profileImageUrl,
       fees: fees || 0,
       shift,
-      medium,
+      medium: medium || 'English',
       stream,
     });
 
@@ -144,14 +215,18 @@ const bulkCreateStudents = async (req, res) => {
     // Fetch all classes to find matching class_code based on std
     const allClasses = await Class.find({ is_delete: false }).lean();
 
+    // Get the max roll numbers for each class to auto-increment
+    const classMaxRollNumbers = {};
+
     for (let i = 0; i < students.length; i++) {
       const row = students[i] || {};
       const first_name = typeof row.first_name === 'string' ? row.first_name.trim() : row.first_name;
       const middle_name = typeof row.middle_name === 'string' ? row.middle_name.trim() : row.middle_name;
       const last_name = typeof row.last_name === 'string' ? row.last_name.trim() : row.last_name;
-      const roll_no = typeof row.roll_no === 'string' ? row.roll_no.trim() : row.roll_no;
+      
       const rowStd = row.std || std;
       const rowMedium = row.medium || medium;
+      let rowClassName = row.class_name || '';
 
       if (!first_name) {
         errors.push({ index: i, message: 'first_name is required' });
@@ -169,18 +244,34 @@ const bulkCreateStudents = async (req, res) => {
       // Try to find a matching class for this student's standard AND division (class_name)
       const matchingClass = allClasses.find(c => 
         String(c.standard) === String(rowStd) && 
-        String(c.division || '').toUpperCase() === String(row.class_name || '').toUpperCase()
+        String(c.division || '').toUpperCase() === String(rowClassName).toUpperCase()
       );
       
-      const resolvedClassCode = matchingClass ? matchingClass.class_code : (class_code || `${rowStd}-${row.class_name || 'A'}-English`);
+      const rowShift = row.shift || shift || matchingClass?.shift || 'Morning';
+      const rowStream = row.stream || stream || matchingClass?.stream || 'Primary';
+
+      // Determine Roll Number (Unique for Standard + Division + Medium + Shift)
+      const classKey = `${rowStd}-${rowClassName}-${rowMedium}-${rowShift}`;
+      if (!classMaxRollNumbers[classKey]) {
+        const maxRoll = await getMaxRollNo({ 
+          std: rowStd, 
+          class_name: rowClassName,
+          medium: rowMedium,
+          shift: rowShift
+        });
+        classMaxRollNumbers[classKey] = maxRoll;
+      }
+      classMaxRollNumbers[classKey] += 1;
+      const roll_no = String(classMaxRollNumbers[classKey]);
+
+      // Generate class_code: std + division (rowClassName) + medium
+      const normalize = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const generatedClassCode = normalize(`${rowStd}-${rowClassName || 'A'}-${rowMedium || 'English'}`);
 
       const gr_number = `GR${year}${String(baseCount + docs.length + 1).padStart(5, '0')}`;
 
-      let plainPassword = row.password || default_password;
-      if (!plainPassword) {
-        plainPassword = Math.random().toString(36).slice(-8);
-        generatedCredentials.push({ index: i, gr_number, password: plainPassword });
-      }
+      let plainPassword = row.password || default_password || '123456';
+      const studentPin = row.pin || '1234';
 
       const hashedPassword = await bcrypt.hash(String(plainPassword), 10);
 
@@ -188,7 +279,7 @@ const bulkCreateStudents = async (req, res) => {
       docs.push({
         gr_number,
         std: String(rowStd),
-        roll_no: String(row.roll_no || '').trim(),
+        roll_no: String(roll_no || '').trim(),
         first_name,
         middle_name,
         last_name,
@@ -196,15 +287,16 @@ const bulkCreateStudents = async (req, res) => {
         phone1: row.phone1,
         phone2: row.phone2,
         address: row.address,
-        pin: row.pin,
+        pin: studentPin,
         class_name: row.class_name,
-        class_code: String(resolvedClassCode),
+        division: row.class_name || 'A',
+        class_code: generatedClassCode,
         medium: rowMedium || matchingClass?.medium || 'English',
         password: hashedPassword,
         profile_image: null,
         fees: typeof row.fees !== 'undefined' ? Number(row.fees) : (matchingClass?.fees || 0),
-        shift: row.shift || shift || matchingClass?.shift || 'Morning',
-        stream: row.stream || stream || matchingClass?.stream || 'Primary',
+        shift: rowShift,
+        stream: rowStream,
       });
     }
 
@@ -253,7 +345,7 @@ const bulkCreateStudents = async (req, res) => {
 // Login Student
 const loginStudent = async (req, res) => {
   try {
-    const { gr_number, password } = req.body;
+    const { gr_number, password, pin } = req.body;
 
     // Find student
     const student = await Student.findOne({ gr_number, is_delete: false });
@@ -261,7 +353,7 @@ const loginStudent = async (req, res) => {
     if (!student) {
       return res.status(401).json({
         success: false,
-        message: 'Invalid GR number or password',
+        message: 'GR number not match',
       });
     }
 
@@ -273,13 +365,29 @@ const loginStudent = async (req, res) => {
       });
     }
 
-    // Verify password
-    const isPasswordValid = await bcrypt.compare(password, student.password);
-
-    if (!isPasswordValid) {
-      return res.status(401).json({
+    // Verify password or pin
+    let isValid = false;
+    if (password) {
+      isValid = await bcrypt.compare(password, student.password);
+      if (!isValid) {
+        return res.status(401).json({
+          success: false,
+          message: 'Password not match',
+        });
+      }
+    } else if (pin) {
+      // Ensure both are compared as strings
+      isValid = String(pin) === String(student.pin);
+      if (!isValid) {
+        return res.status(401).json({
+          success: false,
+          message: 'PIN not match',
+        });
+      }
+    } else {
+      return res.status(400).json({
         success: false,
-        message: 'Invalid GR number or password',
+        message: 'Password or PIN required',
       });
     }
 
@@ -310,40 +418,79 @@ const loginStudent = async (req, res) => {
   }
 };
 
+// Change Password
+const changePassword = async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    const studentId = req.user.id;
+
+    const student = await Student.findById(studentId);
+    if (!student) {
+      return res.status(404).json({ success: false, message: 'Student not found' });
+    }
+
+    const isMatch = await bcrypt.compare(currentPassword, student.password);
+    if (!isMatch) {
+      return res.status(400).json({ success: false, message: 'Current password does not match' });
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    student.password = hashedPassword;
+    await student.save();
+
+    res.json({ success: true, message: 'Password updated successfully' });
+  } catch (error) {
+    console.error('Error in changePassword:', error);
+    res.status(500).json({ success: false, message: 'Error updating password', error: error.message });
+  }
+};
+
+// Change PIN
+const changePin = async (req, res) => {
+  try {
+    const { currentPin, newPin } = req.body;
+    const studentId = req.user.id;
+
+    const student = await Student.findById(studentId);
+    if (!student) {
+      return res.status(404).json({ success: false, message: 'Student not found' });
+    }
+
+    if (String(currentPin) !== String(student.pin)) {
+      return res.status(400).json({ success: false, message: 'Current PIN does not match' });
+    }
+
+    student.pin = String(newPin);
+    await student.save();
+
+    res.json({ success: true, message: 'PIN updated successfully' });
+  } catch (error) {
+    console.error('Error in changePin:', error);
+    res.status(500).json({ success: false, message: 'Error updating PIN', error: error.message });
+  }
+};
+
 // Get All Students
 const getAllStudents = async (req, res) => {
   try {
-    const { class_code } = req.query;
+    const { class_code, std, shift, medium } = req.query;
     const filter = { is_delete: false };
+
+    if (std) filter.std = String(std);
+    if (shift) filter.shift = String(shift);
+    if (medium) filter.medium = String(medium);
 
     // Role-aware filtering:
     // - admin: can see all students (optionally by class_code)
-    // - teacher: can only see students whose class_code is within teacher.assigned_class
+    // - teacher: can only see students of classes where they are the primary class teacher (Class.teacher_code)
     const role = req.user?.role;
     console.log('getAllStudents request:', { role, class_code, user: req.user });
     if (role === 'teacher') {
-      const teacherId = req.user?.id;
-      const teacher = teacherId
-        ? await Teacher.findOne({ _id: teacherId, is_delete: false }).select('assigned_class subject_assignments').lean()
-        : null;
-      const assigned = Array.isArray(teacher?.assigned_class) ? teacher.assigned_class.filter(Boolean) : [];
-
-      // Also include classes where the teacher is the Class Teacher
-      const classTeacherDocs = await Class.find({ teacher_code: req.user?.teacher_code, is_delete: false }).select('class_code').lean();
-      const classTeacherCodes = (classTeacherDocs || []).map(c => c.class_code).filter(Boolean);
-
-      // Also allow classes that are mapped via subject_assignments (subject teacher).
-      let subjectAssignedClassCodes = [];
-      const sa = Array.isArray(teacher?.subject_assignments) ? teacher.subject_assignments : [];
-      const classIds = sa.map((x) => x?.class_id).filter(Boolean);
-      if (classIds.length > 0) {
-        const clsDocs = await Class.find({ _id: { $in: classIds }, is_delete: false })
-          .select('class_code')
-          .lean();
-        subjectAssignedClassCodes = (clsDocs || []).map((c) => c?.class_code).filter(Boolean);
-      }
-
-      const allowedClasses = Array.from(new Set([...assigned, ...classTeacherCodes, ...subjectAssignedClassCodes]));
+      // Strict: only classes where teacher_code matches in Class collection
+      const classTeacherDocs = await Class.find({ teacher_code: req.user?.teacher_code, is_delete: false })
+        .select('class_code')
+        .lean();
+      const allowedClasses = (classTeacherDocs || []).map((c) => c?.class_code).filter(Boolean);
 
       if (allowedClasses.length === 0) {
         console.log('Teacher has no assigned classes');
@@ -358,21 +505,11 @@ const getAllStudents = async (req, res) => {
         const requested = String(class_code);
         const requestedNormalized = normalize(requested);
         
-        const isAuthorized = assignedNormalized.includes(requestedNormalized) || 
-          allowedClasses.includes(requested) || 
+        const isAuthorized = assignedNormalized.includes(requestedNormalized) ||
+          allowedClasses.includes(requested) ||
           allowedClasses.some(a => {
             const normalizedA = normalize(a);
-            if (normalizedA.includes(requestedNormalized) || requestedNormalized.includes(normalizedA)) return true;
-            
-            // Extract components and compare
-            const aMatch = a.match(/(\d+)/);
-            const rMatch = requested.match(/(\d+)/);
-            if (aMatch && rMatch && aMatch[1] === rMatch[1]) {
-              const aDivMatch = a.match(/Div\s*([A-D])/i) || a.match(/-([A-D])\b/i) || a.match(/\s+([A-D])\s+/i);
-              const rDivMatch = requested.match(/Div\s*([A-D])/i) || requested.match(/-([A-D])\b/i) || requested.match(/\s+([A-D])\s+/i);
-              if (aDivMatch && rDivMatch && aDivMatch[1].toUpperCase() === rDivMatch[1].toUpperCase()) return true;
-            }
-            return false;
+            return normalizedA.includes(requestedNormalized) || requestedNormalized.includes(normalizedA);
           });
 
         if (!isAuthorized) {
@@ -533,6 +670,7 @@ const updateStudent = async (req, res) => {
       medium,
       stream,
       is_active,
+      remove_profile_image,
     } = req.body;
 
     // Check if student exists
@@ -545,6 +683,11 @@ const updateStudent = async (req, res) => {
       });
     }
 
+    // Handle profile image removal
+    if (remove_profile_image === true || remove_profile_image === 'true') {
+      student.profile_image = null;
+    }
+
     // Handle profile image upload
     let profileImageUrl = student.profile_image;
     if (req.file) {
@@ -552,25 +695,34 @@ const updateStudent = async (req, res) => {
       profileImageUrl = uploadResult.url;
     }
 
+    // Generate class_code: std + division (class_name) + medium
+    const normalize = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const generatedClassCode = std && class_name ? normalize(`${std}-${class_name || 'A'}-${medium || 'English'}`) : student.class_code;
+
     // Update student
-    student.std = std;
-    student.roll_no = roll_no;
-    student.first_name = first_name;
-    student.middle_name = middle_name;
-    student.last_name = last_name;
-    student.gender = gender;
-    student.phone1 = phone1;
-    student.phone2 = phone2;
-    student.address = address;
-    student.pin = pin;
-    student.class_code = class_code;
-    student.class_name = class_name;
+    if (std) student.std = std;
+    if (roll_no) student.roll_no = roll_no;
+    if (first_name) student.first_name = first_name;
+    if (middle_name) student.middle_name = middle_name;
+    if (last_name) student.last_name = last_name;
+    if (gender) student.gender = gender;
+    if (phone1) student.phone1 = phone1;
+    if (phone2) student.phone2 = phone2;
+    if (address) student.address = address;
+    if (pin) student.pin = pin;
+    if (class_code || (std && class_name)) {
+      student.class_code = class_code ? normalize(class_code) : generatedClassCode;
+    }
+    if (class_name) {
+      student.class_name = class_name;
+      student.division = class_name || 'A';
+    }
     student.profile_image = profileImageUrl;
-    student.fees = fees;
-    student.shift = shift;
-    student.medium = medium;
-    student.stream = stream;
-    student.is_active = is_active;
+    if (typeof fees !== 'undefined') student.fees = fees;
+    if (shift) student.shift = shift;
+    if (medium) student.medium = medium || 'English';
+    if (stream) student.stream = stream;
+    if (typeof is_active !== 'undefined') student.is_active = is_active;
 
     await student.save();
 
@@ -626,12 +778,54 @@ const deleteStudent = async (req, res) => {
   }
 };
 
+// Update Profile Image (For Student themselves)
+const updateProfileImage = async (req, res) => {
+  try {
+    const studentId = req.user.id;
+    const { remove_profile_image } = req.body;
+
+    const student = await Student.findById(studentId);
+    if (!student) {
+      return res.status(404).json({ success: false, message: 'Student not found' });
+    }
+
+    // Handle removal
+    if (remove_profile_image === true || remove_profile_image === 'true') {
+      student.profile_image = null;
+    }
+
+    // Handle upload
+    if (req.file) {
+      const uploadResult = await uploadToCloudinary(req.file, 'school-erp/students');
+      student.profile_image = uploadResult.url;
+    }
+
+    await student.save();
+
+    const studentResponse = student.toObject();
+    delete studentResponse.password;
+
+    res.json({
+      success: true,
+      message: 'Profile image updated successfully',
+      data: studentResponse,
+    });
+  } catch (error) {
+    console.error('Error in updateProfileImage:', error);
+    res.status(500).json({ success: false, message: 'Error updating profile image', error: error.message });
+  }
+};
+
 module.exports = {
   registerStudent,
   bulkCreateStudents,
   loginStudent,
   getAllStudents,
   getStudentById,
+  getNextRollNumber,
   updateStudent,
   deleteStudent,
+  changePassword,
+  changePin,
+  updateProfileImage,
 };

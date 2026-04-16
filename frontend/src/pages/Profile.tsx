@@ -82,7 +82,12 @@ const Profile: React.FC = () => {
       const updatedUser = response?.data?.data || response?.data;
       if (updatedUser) {
         const currentToken = localStorage.getItem('token') || '';
-        login(updatedUser, currentToken);
+        // CRITICAL: Preserve the role if it's missing in the response
+        const userToLogin = {
+          ...updatedUser,
+          role: updatedUser.role || user.role
+        };
+        login(userToLogin, currentToken);
         toast.success('Profile photo updated successfully!');
         setSelectedFile(null);
         setPreview(null);
@@ -92,7 +97,12 @@ const Profile: React.FC = () => {
         if (refreshResponse?.data?.data || refreshResponse?.data) {
           const refreshedUser = refreshResponse?.data?.data || refreshResponse?.data;
           const currentToken = localStorage.getItem('token') || '';
-          login(refreshedUser, currentToken);
+          // CRITICAL: Preserve the role if it's missing in the response
+          const userToLogin = {
+            ...refreshedUser,
+            role: refreshedUser.role || user.role
+          };
+          login(userToLogin, currentToken);
           toast.success('Profile photo updated successfully!');
         } else {
           toast.success('Profile photo uploaded successfully!');
@@ -146,7 +156,12 @@ const Profile: React.FC = () => {
       const updatedUser = response?.data?.data || response?.data;
       if (updatedUser) {
         const currentToken = localStorage.getItem('token') || '';
-        login(updatedUser, currentToken);
+        // CRITICAL: Preserve the role if it's missing in the response
+        const userToLogin = {
+          ...updatedUser,
+          role: updatedUser.role || user.role
+        };
+        login(userToLogin, currentToken);
         toast.success('Profile photo removed successfully');
       }
     } catch (err: any) {

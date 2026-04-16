@@ -28,6 +28,8 @@ admin-teacher-panel/
 ```bash
 cd admin-teacher-panel/frontend
 npm install
+cp .env.example .env # or create .env if not exists
+# Add VITE_CALENDARIFIC_API_KEY=your_key_here to .env
 ```
 
 ### 2. Backend Setup
@@ -98,6 +100,12 @@ npm run dev
 - .tsx file extensions
 - React.FC types
 - Type-safe API calls
+
+## 🗓️ Holiday Calendar Setup
+The holiday calendar uses the [Calendarific API](https://calendarific.com/).
+1. Get a free API key from [Calendarific](https://calendarific.com/signup).
+2. Add `VITE_CALENDARIFIC_API_KEY=your_key` to your `frontend/.env` file.
+3. Restart the frontend server.
 
 ## 🌐 Routes
 

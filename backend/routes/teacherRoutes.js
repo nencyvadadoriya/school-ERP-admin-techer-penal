@@ -8,12 +8,16 @@ const {
   updateTeacher,
   deleteTeacher,
   assignSubjects,
+  forgotPassword,
+  verifyOTPAndResetPassword,
 } = require('../controllers/teacherController');
 const { auth, adminAuth } = require('../middleware/auth');
 const upload = require('../middleware/upload');
 
 // Public routes
 router.post('/login', loginTeacher);
+router.post('/forgot-password', forgotPassword);
+router.post('/verify-otp', verifyOTPAndResetPassword);
 
 // Admin only routes
 router.post('/register', auth, adminAuth, upload.single('profile_image'), registerTeacher);

@@ -12,6 +12,10 @@ const Students: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState<string>('');
   const [selectedClassFilter, setSelectedClassFilter] = useState<string>(''); // Class filter
   const [selectedStdFilter, setSelectedStdFilter] = useState<string>(''); // Standard filter
+  const [selectedShiftFilter, setSelectedShiftFilter] = useState<string>(''); // Shift filter
+  const [selectedMediumFilter, setSelectedMediumFilter] = useState<string>(''); // Medium filter
+  const [selectedStudents, setSelectedStudents] = useState<Set<string>>(new Set());
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [showModal, setShowModal] = useState<boolean>(false);
   const [showBulkModal, setShowBulkModal] = useState<boolean>(false);
   const [selectedStudent, setSelectedStudent] = useState<any | null>(null);
@@ -35,10 +39,10 @@ const Students: React.FC = () => {
   const parseBulkInput = (text: string) => {
     const lines = text.split(/\r?\n/).filter(line => line.trim() !== '');
     const newStudents = lines.map(line => {
-      // Handle the specific format: Roll No: 1 | First Name: Aarav | Last Name: Patel | Middle Name: Kumar | ...
+      // Handle the specific format: First Name: Aarav | Last Name: Patel | Middle Name: Kumar | ...
       if (line.includes('|') && line.includes(':')) {
         const student: any = {
-          roll_no: '', first_name: '', last_name: '', middle_name: '', phone1: '', phone2: '', address: '',
+          first_name: '', last_name: '', middle_name: '', phone1: '', phone2: '', address: '',
           std: bulkApplyAll.std, class_name: bulkApplyAll.class_name, shift: bulkApplyAll.shift, gender: bulkApplyAll.gender,
           stream: bulkApplyAll.stream, medium: bulkApplyAll.medium, fees: bulkApplyAll.fees, pin: bulkApplyAll.pin, password: bulkApplyAll.password,
         };
@@ -49,8 +53,7 @@ const Students: React.FC = () => {
           const value = valParts.join(':').trim();
           const k = key.trim().toLowerCase().replace(/\s/g, '');
 
-          if (k === 'rollno') student.roll_no = value;
-          else if (k === 'firstname') student.first_name = value;
+          if (k === 'firstname') student.first_name = value;
           else if (k === 'lastname') student.last_name = value;
           else if (k === 'middlename') student.middle_name = value;
           else if (k === 'phone1') student.phone1 = value;
@@ -69,16 +72,15 @@ const Students: React.FC = () => {
       console.log('Parsed columns for line:', line, columns);
       
       return {
-        roll_no: columns[0]?.trim() || '',
-        first_name: (columns[1] || '').replace(/^\d+[\.\s]*/, '').trim(),
-        last_name: columns[2]?.trim() || '',
-        phone1: columns[3]?.trim() || '',
-        phone2: columns[4]?.trim() || '',
-        address: columns[5]?.trim() || '',
-        std: columns[6]?.trim() || bulkApplyAll.std,
-        class_name: columns[7]?.trim() || bulkApplyAll.class_name,
-        pin: columns[8]?.trim() || bulkApplyAll.pin,
-        password: columns[9]?.trim() || bulkApplyAll.password,
+        first_name: (columns[0] || '').replace(/^\d+[\.\s]*/, '').trim(),
+        last_name: columns[1]?.trim() || '',
+        phone1: columns[2]?.trim() || '',
+        phone2: columns[3]?.trim() || '',
+        address: columns[4]?.trim() || '',
+        std: columns[5]?.trim() || bulkApplyAll.std,
+        class_name: columns[6]?.trim() || bulkApplyAll.class_name,
+        pin: columns[7]?.trim() || bulkApplyAll.pin,
+        password: columns[8]?.trim() || bulkApplyAll.password,
         shift: bulkApplyAll.shift,
         gender: bulkApplyAll.gender,
         stream: bulkApplyAll.stream,
@@ -123,15 +125,14 @@ const Students: React.FC = () => {
 
   const addBulkRow = () => {
     setBulkRows([...bulkRows, {
-      roll_no: '',
       first_name: '',
       middle_name: '',
       last_name: '',
       phone1: '',
       phone2: '',
       address: '',
-      pin: '',
-      password: '',
+      pin: bulkApplyAll.pin,
+      password: bulkApplyAll.password,
       std: bulkApplyAll.std,
       class_name: bulkApplyAll.class_name,
       shift: bulkApplyAll.shift,
@@ -155,19 +156,18 @@ const Students: React.FC = () => {
 
     const newRows = lines.map(line => {
       const columns = line.split('\t');
-      // If the row looks like Excel data with multiple columns, assume first column is Roll No
-      if (columns.length >= 3) {
+      // If the row looks like Excel data with multiple columns, assume first column is First Name
+      if (columns.length >= 2) {
         return {
-          roll_no: columns[0] || '',
-          first_name: columns[1] || '',
-          last_name: columns[2] || '',
-          phone1: columns[3] || '',
-          phone2: columns[4] || '',
-          address: columns[5] || '',
-          std: columns[6] || bulkApplyAll.std,
-          class_name: columns[7] || bulkApplyAll.class_name,
-          pin: columns[8] || bulkApplyAll.pin,
-          password: columns[9] || bulkApplyAll.password,
+          first_name: columns[0] || '',
+          last_name: columns[1] || '',
+          phone1: columns[2] || '',
+          phone2: columns[3] || '',
+          address: columns[4] || '',
+          std: columns[5] || bulkApplyAll.std,
+          class_name: columns[6] || bulkApplyAll.class_name,
+          pin: columns[7] || bulkApplyAll.pin,
+          password: columns[8] || bulkApplyAll.password,
           shift: bulkApplyAll.shift,
           gender: bulkApplyAll.gender,
           stream: bulkApplyAll.stream,
@@ -176,11 +176,10 @@ const Students: React.FC = () => {
           middle_name: ''
         };
       }
-      // If only 1-2 columns, maybe it's just names, don't force roll_no
+      // If only 1 column, maybe it's just a name
       return {
-        roll_no: '',
         first_name: columns[0] || '',
-        last_name: columns[1] || '',
+        last_name: '',
         phone1: '',
         phone2: '',
         address: '',
@@ -349,7 +348,29 @@ const Students: React.FC = () => {
     return Array.from(stdSet).sort((a, b) => Number(a) - Number(b));
   };
 
-  // Filter students based on search term, selected class, and selected standard
+  // Get unique shifts from students for filter dropdown
+  const getUniqueShifts = () => {
+    const shiftSet = new Set();
+    students.forEach(student => {
+      if (student.shift) {
+        shiftSet.add(student.shift);
+      }
+    });
+    return Array.from(shiftSet).sort();
+  };
+
+  // Get unique mediums from students for filter dropdown
+  const getUniqueMediums = () => {
+    const mediumSet = new Set();
+    students.forEach(student => {
+      if (student.medium) {
+        mediumSet.add(student.medium);
+      }
+    });
+    return Array.from(mediumSet).sort();
+  };
+
+  // Filter students based on search term, selected class, selected standard, shift, and medium
   const filteredStudents = students
     .filter((student) => {
       // Apply class filter
@@ -358,6 +379,14 @@ const Students: React.FC = () => {
       }
       // Apply standard filter
       if (selectedStdFilter && student.std !== selectedStdFilter) {
+        return false;
+      }
+      // Apply shift filter
+      if (selectedShiftFilter && student.shift !== selectedShiftFilter) {
+        return false;
+      }
+      // Apply medium filter
+      if (selectedMediumFilter && student.medium !== selectedMediumFilter) {
         return false;
       }
       // Apply search filter
@@ -370,31 +399,47 @@ const Students: React.FC = () => {
     })
     .sort((a, b) => (Number(a.roll_no) || 0) - (Number(b.roll_no) || 0));
 
-  const handleFormChange = (e: any) => {
+  const handleFormChange = async (e: any) => {
     const { name, value } = e.target;
-    setFormData((s) => ({ ...s, [name]: value }));
+    const updatedFormData = { ...formData, [name]: value };
+    setFormData(updatedFormData);
 
-    // Reset stream when standard changes
-    if (name === 'std') {
-      setFormData((s) => ({
-        ...s,
-        std: value,
-        stream: '',
-      }));
-    }
+    // Reset stream and fetch next roll number when standard or class_name changes
+    if (name === 'std' || name === 'class_name') {
+      const std = name === 'std' ? value : formData.std;
+      const class_name = name === 'class_name' ? value : formData.class_name;
 
-    // Update stream when stream changes
-    if (name === 'stream') {
-      setFormData((s) => ({ ...s, stream: value }));
+      if (name === 'std') {
+        updatedFormData.stream = '';
+      }
+
+      if (std && class_name && !selectedStudent) {
+        try {
+          const res = await studentAPI.getNextRollNumber({
+            std,
+            class_name,
+            shift: formData.shift,
+            medium: formData.medium,
+            stream: updatedFormData.stream
+          });
+          if (res.data?.success) {
+            setFormData(prev => ({ ...prev, roll_no: res.data.nextRollNo, std, class_name, stream: name === 'std' ? '' : prev.stream }));
+          }
+        } catch (error) {
+          console.error('Error fetching next roll number:', error);
+        }
+      } else {
+        setFormData(updatedFormData);
+      }
     }
   };
 
-  const openAddModal = () => {
+  const openAddModal = async () => {
     setSelectedStudent(null);
     setFormData({
       std: '', roll_no: '', first_name: '', middle_name: '', last_name: '', 
-      gender: '', phone1: '', phone2: '', address: '', pin: '', 
-      class_code: '', class_name: '', password: '', fees: '', 
+      gender: '', phone1: '', phone2: '', address: '', pin: '1234', 
+      class_code: '', class_name: '', password: '123456', fees: '', 
       shift: '', stream: '', medium: '',
     });
     setShowModal(true);
@@ -405,7 +450,7 @@ const Students: React.FC = () => {
     setBulkSubmitting(false);
     setBulkRows([]);
     setBulkInputText('');
-    setBulkApplyAll({ std: '', class_name: '', shift: '', gender: '', stream: '', medium: '', fees: '', pin: '', password: '' });
+    setBulkApplyAll({ std: '', class_name: '', shift: '', gender: '', stream: '', medium: '', fees: '', pin: '1234', password: '123456' });
     setShowBulkModal(true);
   };
 
@@ -482,7 +527,7 @@ const Students: React.FC = () => {
   };
 
   const handleDelete = async (id) => {
-    if (window.confirm('Are you sure you want to delete this student?')) {
+    if (window.confirm('Are you sure you want to permanently delete this student?')) {
       try {
         await studentAPI.delete(id);
         toast.success('Student deleted successfully');
@@ -491,6 +536,52 @@ const Students: React.FC = () => {
         toast.error('Error deleting student');
       }
     }
+  };
+
+  const handleDeleteSelected = async () => {
+    if (selectedStudents.size === 0) return;
+    if (window.confirm(`Are you sure you want to permanently delete ${selectedStudents.size} selected students?`)) {
+      try {
+        const deletePromises = Array.from(selectedStudents).map(id => studentAPI.delete(id));
+        await Promise.all(deletePromises);
+        toast.success(`${selectedStudents.size} students deleted successfully`);
+        setSelectedStudents(new Set());
+        fetchStudents();
+      } catch (error) {
+        toast.error('Error deleting some students');
+      }
+    }
+  };
+
+  const toggleSelectAll = (studentIds: string[]) => {
+    const allSelected = studentIds.every(id => selectedStudents.has(id));
+    const newSelected = new Set(selectedStudents);
+    if (allSelected) {
+      studentIds.forEach(id => newSelected.delete(id));
+    } else {
+      studentIds.forEach(id => newSelected.add(id));
+    }
+    setSelectedStudents(newSelected);
+  };
+
+  const toggleSelectStudent = (id: string) => {
+    const newSelected = new Set(selectedStudents);
+    if (newSelected.has(id)) {
+      newSelected.delete(id);
+    } else {
+      newSelected.add(id);
+    }
+    setSelectedStudents(newSelected);
+  };
+
+  const toggleGroupExpand = (groupKey: string) => {
+    const newExpanded = new Set(expandedGroups);
+    if (newExpanded.has(groupKey)) {
+      newExpanded.delete(groupKey);
+    } else {
+      newExpanded.add(groupKey);
+    }
+    setExpandedGroups(newExpanded);
   };
 
   const handleFormSubmit = async (e: any) => {
@@ -548,7 +639,27 @@ const Students: React.FC = () => {
     setSearchTerm('');
     setSelectedClassFilter('');
     setSelectedStdFilter('');
+    setSelectedShiftFilter('');
+    setSelectedMediumFilter('');
+    setSelectedStudents(new Set());
+    setExpandedGroups(new Set());
   };
+
+  // Group students by Class/Shift/Medium
+  const groupedStudents = filteredStudents.reduce((groups: any, student) => {
+    const key = `${student.std}-${student.class_name}-${student.shift}-${student.medium}`;
+    if (!groups[key]) {
+      groups[key] = {
+        std: student.std,
+        class_name: student.class_name,
+        shift: student.shift,
+        medium: student.medium,
+        students: []
+      };
+    }
+    groups[key].students.push(student);
+    return groups;
+  }, {});
 
   // Card View Component
   const StudentCard = ({ student, index }) => {
@@ -798,9 +909,43 @@ const Students: React.FC = () => {
               ))}
             </select>
           </div>
+
+          {/* Shift Filter Dropdown */}
+          <div className="sm:w-48 relative">
+            <FaFilter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 text-sm" />
+            <select
+              value={selectedShiftFilter}
+              onChange={(e) => setSelectedShiftFilter(e.target.value)}
+              className="input-field pl-10 py-2 text-sm w-full appearance-none"
+            >
+              <option value="">All Shifts</option>
+              {getUniqueShifts().map((shift: any) => (
+                <option key={shift} value={shift}>
+                  {shift}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Medium Filter Dropdown */}
+          <div className="sm:w-48 relative">
+            <FaFilter className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 text-sm" />
+            <select
+              value={selectedMediumFilter}
+              onChange={(e) => setSelectedMediumFilter(e.target.value)}
+              className="input-field pl-10 py-2 text-sm w-full appearance-none"
+            >
+              <option value="">All Mediums</option>
+              {getUniqueMediums().map((medium: any) => (
+                <option key={medium} value={medium}>
+                  {medium}
+                </option>
+              ))}
+            </select>
+          </div>
           
           {/* Clear Filters Button */}
-          {(searchTerm || selectedClassFilter || selectedStdFilter) && (
+          {(searchTerm || selectedClassFilter || selectedStdFilter || selectedShiftFilter || selectedMediumFilter) && (
             <button
               onClick={clearFilters}
               className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors whitespace-nowrap"
@@ -811,7 +956,7 @@ const Students: React.FC = () => {
         </div>
         
         {/* Active Filters Display */}
-        {(searchTerm || selectedClassFilter || selectedStdFilter) && (
+        {(searchTerm || selectedClassFilter || selectedStdFilter || selectedShiftFilter || selectedMediumFilter) && (
           <div className="mt-3 flex flex-wrap gap-2">
             {selectedStdFilter && (
               <span className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-purple-100 text-purple-700 rounded-full">
@@ -823,6 +968,18 @@ const Students: React.FC = () => {
               <span className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-primary-100 text-primary-700 rounded-full">
                 Section: {selectedClassFilter}
                 <button onClick={() => setSelectedClassFilter('')} className="hover:text-primary-900">×</button>
+              </span>
+            )}
+            {selectedShiftFilter && (
+              <span className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-orange-100 text-orange-700 rounded-full">
+                Shift: {selectedShiftFilter}
+                <button onClick={() => setSelectedShiftFilter('')} className="hover:text-orange-900">×</button>
+              </span>
+            )}
+            {selectedMediumFilter && (
+              <span className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-green-100 text-green-700 rounded-full">
+                Medium: {selectedMediumFilter}
+                <button onClick={() => setSelectedMediumFilter('')} className="hover:text-green-900">×</button>
               </span>
             )}
             {searchTerm && (
@@ -838,163 +995,151 @@ const Students: React.FC = () => {
         )}
       </div>
 
-      {/* Conditional Rendering: Table View or Card View */}
-      {viewMode === 'table' ? (
-        /* Table View */
-        <div className="card overflow-hidden p-0">
-          <div className="overflow-x-auto shadow-sm">
-            <div className="inline-block min-w-full align-middle">
-              <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
-                      Roll No
-                    </th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
-                      GR Id
-                    </th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
-                      Student Name
-                    </th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
-                      Class
-                    </th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
-                      Standard
-                    </th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
-                      Medium
-                    </th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
-                      Gender
-                    </th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
-                      Shift
-                    </th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
-                      Stream
-                    </th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
-                      Contact
-                    </th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
-                      Status
-                    </th>
-                    <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
-                      Actions
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {filteredStudents.map((student, index) => (
-                    <tr key={student.id} className="hover:bg-gray-50">
-                      <td className="px-3 py-3 whitespace-nowrap text-sm text-gray-500">
-                        {student.roll_no || index + 1}
-                      </td>
-                      <td className="px-3 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
-                        {student.gr_number}
-                      </td>
-                      <td className="px-3 py-3 whitespace-nowrap">
-                        <div className="flex items-center">
-                          <div className="h-7 w-7 flex-shrink-0 sm:h-8 sm:w-8">
-                            <div className="h-7 w-7 sm:h-8 sm:w-8 rounded-full bg-primary-100 flex items-center justify-center">
-                              <span className="text-primary-600 font-medium text-xs">
-                                {student.first_name?.charAt(0)}
-                                {student.last_name?.charAt(0)}
-                              </span>
-                            </div>
-                          </div>
-                          <div className="ml-2">
-                            <div className="text-sm font-medium text-gray-900">
-                              {student.first_name} {student.middle_name} {student.last_name}
-                            </div>
-                          </div>
-                        </div>
-                       </td>
-                      <td className="px-3 py-3 whitespace-nowrap text-sm text-gray-500">
-                        {student.class_name || 'Not Assigned'}
-                       </td>
-                      <td className="px-3 py-3 whitespace-nowrap text-sm text-gray-500">
-                        {student.std}
-                       </td>
-                      <td className="px-3 py-3 whitespace-nowrap text-sm text-gray-500">
-                        {student.medium || 'N/A'}
-                       </td>
-                      <td className="px-3 py-3 whitespace-nowrap text-sm text-gray-500">
-                        {student.gender}
-                       </td>
-                      <td className="px-3 py-3 whitespace-nowrap text-sm text-gray-500">
-                        {student.shift || 'N/A'}
-                       </td>
-                      <td className="px-3 py-3 whitespace-nowrap text-sm text-gray-500">
-                        {student.stream || 'N/A'}
-                       </td>
-                      <td className="px-3 py-3 whitespace-nowrap text-sm text-gray-500">
-                        {student.phone1}
-                       </td>
-                      <td className="px-3 py-3 whitespace-nowrap">
-                        <span
-                          className={`px-2 py-0.5 inline-flex text-xs leading-5 font-semibold rounded-full ${student.is_active
-                              ? 'bg-green-100 text-green-800'
-                              : 'bg-red-100 text-red-800'
-                            }`}
-                        >
-                          {student.is_active ? 'Active' : 'Inactive'}
-                        </span>
-                       </td>
-                      <td className="px-3 py-3 whitespace-nowrap text-sm font-medium">
-                        <div className="flex items-center space-x-1.5">
+      {/* View Content */}
+      <div className="space-y-6">
+        {viewMode === 'table' ? (
+          /* Grouped Class View */
+          <div className="space-y-8">
+            {Object.entries(groupedStudents).map(([groupKey, group]: [string, any]) => {
+              const groupStudentIds = group.students.map((s: any) => s._id || s.id);
+              const isGroupAllSelected = groupStudentIds.length > 0 && groupStudentIds.every(id => selectedStudents.has(id));
+              const isExpanded = expandedGroups.has(groupKey);
+
+              return (
+                <div key={groupKey} className="card overflow-hidden p-0 border-2 border-primary-100 shadow-sm hover:shadow-md transition-shadow">
+                  {/* Group Header */}
+                  <div 
+                    className="bg-primary-50 px-6 py-4 border-b border-primary-100 flex items-center justify-between cursor-pointer hover:bg-primary-100 transition-colors"
+                    onClick={() => toggleGroupExpand(groupKey)}
+                  >
+                    <div className="flex items-center gap-4">
+                      <div onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={isGroupAllSelected}
+                          onChange={() => toggleSelectAll(groupStudentIds)}
+                          className="h-5 w-5 rounded border-gray-300 text-primary-600 focus:ring-primary-500 cursor-pointer"
+                        />
+                      </div>
+                      <div>
+                        <h2 className="text-lg font-bold text-primary-900">
+                          Standard: {group.std} | Section: {group.class_name} | Shift: {group.shift} | Medium: {group.medium}
+                        </h2>
+                        <p className="text-sm text-primary-600 font-medium">
+                          Total students in this group: {group.students.length}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      {selectedStudents.size > 0 && groupStudentIds.some(id => selectedStudents.has(id)) && (
+                        <div onClick={(e) => e.stopPropagation()}>
                           <button
-                            onClick={() => navigate(`/admin/student-history/${student._id || student.id}`)}
-                            className="text-primary-600 hover:text-primary-900 p-1"
-                            title="View History"
+                            onClick={handleDeleteSelected}
+                            className="btn-danger py-2 px-4 flex items-center gap-2 text-sm shadow-sm"
                           >
-                            <FaHistory className="text-sm" />
-                          </button>
-                          <button
-                            onClick={() => openEditModal(student)}
-                            className="text-blue-600 hover:text-blue-900 p-1"
-                            title="Edit"
-                          >
-                            <FaEdit className="text-sm" />
-                          </button>
-                          <button
-                            onClick={() => handleDelete(student._id || student.id)}
-                            className="text-red-600 hover:text-red-900 p-1"
-                            title="Delete"
-                          >
-                            <FaTrash className="text-sm" />
+                            <FaTrash size={14} />
+                            <span>Delete Selected ({groupStudentIds.filter(id => selectedStudents.has(id)).length})</span>
                           </button>
                         </div>
-                       </td>
-                    </tr>
-                  ))}
-                </tbody>
-               </table>
-            </div>
+                      )}
+                      <div className={`transform transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}>
+                        <svg className="w-6 h-6 text-primary-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Group Content (Table) - Collapsible */}
+                  {isExpanded && (
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider w-10">Select</th>
+                            <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider w-16">Roll</th>
+                            <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">GR Number</th>
+                            <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Student Name</th>
+                            <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Gender</th>
+                            <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
+                            <th className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-100">
+                          {group.students.map((student: any) => (
+                            <tr key={student._id || student.id} className={`hover:bg-gray-50 transition-colors ${selectedStudents.has(student._id || student.id) ? 'bg-primary-50' : ''}`}>
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedStudents.has(student._id || student.id)}
+                                  onChange={() => toggleSelectStudent(student._id || student.id)}
+                                  className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 cursor-pointer"
+                                />
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                                {student.roll_no}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600 font-mono">
+                                {student.gr_number}
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <div className="text-sm font-semibold text-gray-900">
+                                  {student.first_name} {student.last_name}
+                                </div>
+                                <div className="text-xs text-gray-500">{student.phone1}</div>
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <span className="text-sm text-gray-700 flex items-center gap-1">
+                                  {student.gender === 'Male' ? <FaMale className="text-blue-500" /> : 
+                                   student.gender === 'Female' ? <FaFemale className="text-pink-500" /> : null}
+                                  {student.gender}
+                                </span>
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap">
+                                <span className={`px-2 py-1 text-[10px] font-bold uppercase tracking-wider rounded-full ${student.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                                  {student.is_active ? 'Active' : 'Inactive'}
+                                </span>
+                              </td>
+                              <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                                <div className="flex justify-end gap-2">
+                                  <button onClick={() => navigate(`/admin/student-history/${student._id || student.id}`)} className="p-2 text-primary-600 hover:bg-primary-50 rounded-lg transition-colors" title="View History">
+                                    <FaHistory size={16} />
+                                  </button>
+                                  <button onClick={() => openEditModal(student)} className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors" title="Edit Student">
+                                    <FaEdit size={16} />
+                                  </button>
+                                  <button onClick={() => handleDelete(student._id || student.id)} className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors" title="Delete Student">
+                                    <FaTrash size={16} />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
-          {filteredStudents.length === 0 && (
-            <div className="text-center py-12">
-              <p className="text-gray-500">No students found matching the filters</p>
-            </div>
-          )}
-        </div>
-      ) : (
-        /* Card View */
-        <div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        ) : (
+          /* Card View */
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {filteredStudents.map((student, index) => (
-              <StudentCard key={student.id} student={student} index={index} />
+              <StudentCard key={student._id || student.id} student={student} index={index} />
             ))}
           </div>
-          {filteredStudents.length === 0 && (
-            <div className="text-center py-12">
-              <p className="text-gray-500">No students found matching the filters</p>
-            </div>
-          )}
-        </div>
-      )}
+        )}
 
+        {filteredStudents.length === 0 && (
+          <div className="text-center py-20 bg-white rounded-xl border border-gray-200 shadow-sm mt-6">
+            <FaSearch className="mx-auto text-gray-300 text-5xl mb-4" />
+            <h3 className="text-lg font-medium text-gray-900">No students found</h3>
+            <p className="text-gray-500">Try adjusting your filters or search term.</p>
+          </div>
+        )}
+      </div>
       {/* Add/Edit Student Modal */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40 p-4">
@@ -1042,7 +1187,7 @@ const Students: React.FC = () => {
                 </select>
               </div>
 
-              {/* Roll Number */}
+              {/* Roll Number (Read Only) */}
               <div className="space-y-1">
                 <label className="block text-sm font-medium text-gray-700">
                   Roll Number
@@ -1050,10 +1195,11 @@ const Students: React.FC = () => {
                 <input
                   name="roll_no"
                   value={formData.roll_no}
-                  onChange={handleFormChange}
-                  placeholder="Enter roll number"
-                  className="input-field py-2 text-sm"
+                  readOnly
+                  placeholder="Auto-generated"
+                  className="input-field py-2 text-sm bg-gray-50 cursor-not-allowed"
                 />
+                <p className="text-[10px] text-gray-500">Automatically assigned based on class</p>
               </div>
 
               {/* First Name */}
@@ -1186,20 +1332,6 @@ const Students: React.FC = () => {
                 />
               </div>
 
-              {/* Address */}
-              <div className="space-y-1 col-span-1 md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700">
-                  Address
-                </label>
-                <input
-                  name="address"
-                  value={formData.address}
-                  onChange={handleFormChange}
-                  placeholder="Enter complete address"
-                  className="input-field py-2 text-sm"
-                />
-              </div>
-
               {/* PIN Code */}
               <div className="space-y-1">
                 <label className="block text-sm font-medium text-gray-700">
@@ -1210,20 +1342,6 @@ const Students: React.FC = () => {
                   value={formData.pin}
                   onChange={handleFormChange}
                   placeholder="Enter PIN code"
-                  className="input-field py-2 text-sm"
-                />
-              </div>
-
-              {/* Class Code */}
-              <div className="space-y-1">
-                <label className="block text-sm font-medium text-gray-700">
-                  Class Code
-                </label>
-                <input
-                  name="class_code"
-                  value={formData.class_code}
-                  onChange={handleFormChange}
-                  placeholder="e.g., CLS-10A"
                   className="input-field py-2 text-sm"
                 />
               </div>
@@ -1505,7 +1623,6 @@ const Students: React.FC = () => {
                     <thead className="bg-gray-50">
                       <tr>
                         <th className="px-3 py-2 text-left text-[10px] font-bold text-gray-500 uppercase">#</th>
-                        <th className="px-3 py-2 text-left text-[10px] font-bold text-gray-500 uppercase">Roll No</th>
                         <th className="px-3 py-2 text-left text-[10px] font-bold text-gray-500 uppercase">First Name *</th>
                         <th className="px-3 py-2 text-left text-[10px] font-bold text-gray-500 uppercase">Middle Name</th>
                         <th className="px-3 py-2 text-left text-[10px] font-bold text-gray-500 uppercase">Last Name *</th>
@@ -1524,14 +1641,6 @@ const Students: React.FC = () => {
                       {bulkRows.map((row, idx) => (
                         <tr key={idx} className="hover:bg-gray-50">
                           <td className="px-3 py-2 text-xs text-gray-500 font-mono">{idx + 1}</td>
-                          <td className="px-2 py-2">
-                            <input
-                              value={row.roll_no}
-                              onChange={(e) => handleBulkRowChange(idx, 'roll_no', e.target.value)}
-                              placeholder="Roll No"
-                              className="w-full border-none focus:ring-0 text-xs p-0 bg-transparent font-mono"
-                            />
-                          </td>
                           <td className="px-2 py-2">
                             <input
                               value={row.first_name}
