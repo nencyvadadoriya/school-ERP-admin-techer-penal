@@ -195,8 +195,8 @@ const Attendance: React.FC = () => {
                           Class {classDetails.standard} - {classDetails.division} ({classDetails.medium} Medium)
                         </h3>
                       </div>
-                      <Badge color="blue" variant="light">
-                        {Object.values(months).reduce((acc: number, m: any) => acc + Object.keys(m).length, 0)} Days Recorded
+                      <Badge status="blue">
+                        {(Object.values(months) as any[]).reduce((acc: number, m: any) => acc + Object.keys(m).length, 0)} Days Recorded
                       </Badge>
                     </button>
 

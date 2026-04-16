@@ -1,8 +1,9 @@
 import React, { useEffect, useState, useRef, ChangeEvent } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { toast } from 'react-toastify';
-import { adminAPI, teacherAPI, studentAPI } from '../services/api';
+import { adminAPI, teacherAPI, studentAPI, examAPI } from '../services/api';
 import { FaUser, FaEnvelope, FaPhone, FaIdCard, FaSchool, FaUserGraduate, FaChalkboardTeacher, FaPencilAlt, FaUpload, FaTrashAlt } from 'react-icons/fa';
+import Spinner from '../components/Spinner';
 
 const Profile: React.FC = () => {
   const { user, login } = useAuth();

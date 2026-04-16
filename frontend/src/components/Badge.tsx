@@ -1,7 +1,12 @@
 import React from 'react';
 
-const Badge = ({ status }) => {
-  const map = {
+interface BadgeProps {
+  status: string;
+  children?: React.ReactNode;
+}
+
+const Badge: React.FC<BadgeProps> = ({ status, children }) => {
+  const map: Record<string, string> = {
     Pending: 'bg-yellow-100 text-yellow-700',
     Approved: 'bg-green-100 text-green-700',
     Rejected: 'bg-red-100 text-red-700',
@@ -19,7 +24,7 @@ const Badge = ({ status }) => {
   };
   return (
     <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${map[status] || 'bg-gray-100 text-gray-700'}`}>
-      {status}
+      {children || status}
     </span>
   );
 };
