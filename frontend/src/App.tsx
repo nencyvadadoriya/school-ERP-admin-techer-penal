@@ -17,6 +17,7 @@ import Header from './components/Header';
 
 // Admin Pages
 import AdminDashboard from './pages/admin/AdminDashboard';
+import AdminManagement from './pages/admin/AdminManagement';
 import Students from './pages/admin/Students';
 import StudentHistory from './pages/admin/StudentHistory';
 import Teachers from './pages/admin/Teachers';
@@ -97,6 +98,7 @@ function AppContent() {
 
       {/* Admin Routes */}
       <Route path="/admin/dashboard" element={<PrivateRoute role="admin"><DashboardLayout><AdminDashboard /></DashboardLayout></PrivateRoute>} />
+      <Route path="/admin/admins" element={<PrivateRoute role="admin"><DashboardLayout><AdminManagement /></DashboardLayout></PrivateRoute>} />
       <Route path="/admin/students" element={<PrivateRoute role="admin"><DashboardLayout><Students /></DashboardLayout></PrivateRoute>} />
       <Route path="/admin/student-history/:id" element={<PrivateRoute role="admin"><DashboardLayout><StudentHistory /></DashboardLayout></PrivateRoute>} />
       <Route path="/admin/teachers" element={<PrivateRoute role="admin"><DashboardLayout><Teachers /></DashboardLayout></PrivateRoute>} />

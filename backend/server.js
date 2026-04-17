@@ -25,6 +25,8 @@ const classRoutes = require('./routes/classRoutes');
 const subjectRoutes = require('./routes/subjectRoutes');
 const shiftBreakTimeRoutes = require('./routes/shiftBreakTimeRoutes');
 const auditRoutes = require('./routes/auditRoutes');
+const predictionRoutes = require('./routes/prediction.route');
+const autoNotificationRoutes = require('./routes/autoNotification.route');
 
 // Allow the frontend origin from env or reflect the request origin in dev (safe for local development)
 app.use(cors({ origin: process.env.FRONTEND_URL || true, credentials: true }));
@@ -50,6 +52,8 @@ app.use('/api/class', classRoutes);
 app.use('/api/subject', subjectRoutes);
 app.use('/api/shift-break-time', shiftBreakTimeRoutes);
 app.use('/api/audit', auditRoutes);
+app.use('/api/prediction', predictionRoutes);
+app.use('/api/auto-notifications', autoNotificationRoutes);
 
 
 
